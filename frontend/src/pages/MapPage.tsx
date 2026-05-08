@@ -87,7 +87,7 @@ export function MapPage() {
       </div>
 
       {/* Map */}
-      <div className="flex-1">
+      <div className="flex-1" style={{ isolation: 'isolate' }}>
         <DefectMap defects={filtered} height="100%" />
       </div>
     </div>

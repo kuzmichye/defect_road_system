@@ -31,7 +31,7 @@ export function MapPage() {
   })
 
   return (
-    <div className="flex flex-col" style={{ height: '100vh' }}>
+    <div className="flex flex-col h-[calc(100vh-44px)] lg:h-screen">
       {/* Toolbar */}
       <div className="bg-white border-b border-slate-200 px-3 sm:px-5 py-2 sm:py-3 flex-shrink-0">
         <div className="flex flex-wrap items-center gap-2">

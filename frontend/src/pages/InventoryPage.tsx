@@ -122,12 +122,12 @@ export function InventoryPage() {
       {/* Table */}
       <div className="bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="w-full text-xs sm:text-sm">
             <thead className="bg-slate-50 border-b border-slate-100">
               <tr>
-                {['ID', 'Тип', 'Тяжесть', 'Уверенность', 'Координаты', 'Адрес', 'Дата', 'Источник', ''].map(
+                {['ID', 'Тип', 'Тяжесть', 'Увер.', 'Коорд.', 'Адрес', 'Дата', 'Ист.', ''].map(
                   (h) => (
-                    <th key={h} className="text-left px-4 py-3 text-slate-500 font-medium whitespace-nowrap">
+                    <th key={h} className="text-left px-2 sm:px-4 py-2 text-slate-500 font-medium whitespace-nowrap">
                       {h}
                     </th>
                   ),
@@ -137,35 +137,35 @@ export function InventoryPage() {
             <tbody>
               {filtered.map((d) => (
                 <tr key={d.id} className="border-b border-slate-50 hover:bg-slate-50 transition-colors">
-                  <td className="px-4 py-3 text-slate-400 text-xs">#{d.id}</td>
-                  <td className="px-4 py-3 font-medium text-slate-700 whitespace-nowrap">
+                  <td className="px-2 sm:px-4 py-2 text-slate-400 text-xs">#{d.id}</td>
+                  <td className="px-2 sm:px-4 py-2 font-medium text-slate-700 whitespace-nowrap">
                     {TYPE_LABELS[d.defect_type] || d.defect_type}
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-2 sm:px-4 py-2">
                     <span
-                      className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                      className={`px-1.5 py-0.5 rounded-full text-xs font-medium ${
                         SEVERITY_BADGE[d.severity] || 'bg-slate-100 text-slate-600'
                       }`}
                     >
                       {SEVERITY_LABELS[d.severity] || d.severity}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-slate-500">
+                  <td className="px-2 sm:px-4 py-2 text-slate-500">
                     {d.confidence != null ? `${(d.confidence * 100).toFixed(0)}%` : '—'}
                   </td>
-                  <td className="px-4 py-3 text-slate-400 font-mono text-xs whitespace-nowrap">
+                  <td className="px-2 sm:px-4 py-2 text-slate-400 font-mono text-xs whitespace-nowrap">
                     {d.lat != null && d.lng != null
-                      ? `${d.lat.toFixed(4)}, ${d.lng.toFixed(4)}`
+                      ? `${d.lat.toFixed(3)}, ${d.lng.toFixed(3)}`
                       : '—'}
                   </td>
-                  <td className="px-4 py-3 text-slate-500 max-w-xs truncate">{d.address || '—'}</td>
-                  <td className="px-4 py-3 text-slate-500 whitespace-nowrap">
+                  <td className="px-2 sm:px-4 py-2 text-slate-500 max-w-[120px] sm:max-w-xs truncate">{d.address || '—'}</td>
+                  <td className="px-2 sm:px-4 py-2 text-slate-500 whitespace-nowrap">
                     {new Date(d.detected_at).toLocaleDateString('ru')}
                   </td>
-                  <td className="px-4 py-3 text-slate-400 text-xs">
+                  <td className="px-2 sm:px-4 py-2 text-slate-400 text-xs">
                     {d.source_type === 'video' ? 'Видео' : 'Фото'}
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-2 sm:px-4 py-2">
                     <button
                       onClick={() => deleteDefect(d.id)}
                       className="text-slate-300 hover:text-red-500 transition-colors"
@@ -177,7 +177,7 @@ export function InventoryPage() {
               ))}
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={9} className="px-4 py-16 text-center text-slate-400 text-sm">
+                  <td colSpan={9} className="px-4 py-10 text-center text-slate-400 text-sm">
                     Дефекты не найдены
                   </td>
                 </tr>

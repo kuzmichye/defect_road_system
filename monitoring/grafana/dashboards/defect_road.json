@@ -1,0 +1,112 @@
+{
+  "title": "Road Defect Detection",
+  "uid": "defect-road-main",
+  "version": 1,
+  "schemaVersion": 36,
+  "refresh": "10s",
+  "time": { "from": "now-1h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Всего детекций",
+      "type": "stat",
+      "gridPos": { "x": 0, "y": 0, "w": 6, "h": 4 },
+      "targets": [
+        {
+          "expr": "sum(defect_detections_total)",
+          "legendFormat": "Детекций"
+        }
+      ],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "steps": [{ "color": "blue", "value": null }] } } }
+    },
+    {
+      "id": 2,
+      "title": "HTTP запросы в секунду",
+      "type": "timeseries",
+      "gridPos": { "x": 6, "y": 0, "w": 18, "h": 8 },
+      "targets": [
+        {
+          "expr": "rate(http_requests_total[1m])",
+          "legendFormat": "{{handler}} {{status_code}}"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Детекций по типу дефекта",
+      "type": "piechart",
+      "gridPos": { "x": 0, "y": 4, "w": 6, "h": 8 },
+      "targets": [
+        {
+          "expr": "sum by (defect_type) (defect_detections_total)",
+          "legendFormat": "{{defect_type}}"
+        }
+      ],
+      "options": { "pieType": "donut", "legendDisplayMode": "table" }
+    },
+    {
+      "id": 4,
+      "title": "Детекций по критичности",
+      "type": "bargauge",
+      "gridPos": { "x": 0, "y": 12, "w": 12, "h": 6 },
+      "targets": [
+        {
+          "expr": "sum by (severity) (defect_detections_total)",
+          "legendFormat": "{{severity}}"
+        }
+      ],
+      "options": { "orientation": "horizontal", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 5 },
+              { "color": "orange", "value": 15 },
+              { "color": "red", "value": 30 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 5,
+      "title": "Время инференса (p95), сек",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 12, "w": 12, "h": 6 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, rate(detection_duration_seconds_bucket[5m]))",
+          "legendFormat": "p95 {{source_type}}"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Латентность HTTP p95 (мс)",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 18, "w": 12, "h": 6 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m])) * 1000",
+          "legendFormat": "{{handler}}"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Ошибки HTTP (4xx/5xx)",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 18, "w": 12, "h": 6 },
+      "targets": [
+        {
+          "expr": "rate(http_requests_total{status_code=~\"4..|5..\"}[1m])",
+          "legendFormat": "{{status_code}} {{handler}}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "color": { "fixedColor": "red", "mode": "fixed" } } }
+    }
+  ]
+}

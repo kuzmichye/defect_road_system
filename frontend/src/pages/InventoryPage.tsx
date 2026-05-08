@@ -60,38 +60,38 @@ export function InventoryPage() {
   }
 
   return (
-    <div className="p-6 space-y-5">
+    <div className="p-4 sm:p-6 space-y-4 sm:space-y-5">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-slate-800">Инвентаризация</h1>
           <p className="text-slate-500 text-sm mt-0.5">{filtered.length} дефектов</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-shrink-0">
           <button
             onClick={handleExportGeoJson}
             className="flex items-center gap-1.5 px-3 py-2 border border-slate-300 rounded-lg text-sm text-slate-600 hover:bg-slate-50 transition-colors"
           >
             <FileJson size={15} />
-            GeoJSON
+            <span className="hidden xs:inline sm:inline">GeoJSON</span>
           </button>
           <button
             onClick={handleExportCsv}
             className="flex items-center gap-1.5 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm transition-colors"
           >
             <Download size={15} />
-            Экспорт CSV
+            <span>CSV</span>
           </button>
         </div>
       </div>
 
       {/* Filters */}
-      <div className="flex items-center gap-3 bg-white px-4 py-3 rounded-xl border border-slate-100 shadow-sm">
-        <Filter size={15} className="text-slate-400" />
+      <div className="flex flex-wrap items-center gap-2 bg-white px-3 sm:px-4 py-3 rounded-xl border border-slate-100 shadow-sm">
+        <Filter size={15} className="text-slate-400 flex-shrink-0" />
         <select
           value={filterType}
           onChange={(e) => setFilterType(e.target.value)}
-          className="border border-slate-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="flex-1 min-w-0 border border-slate-300 rounded-lg px-2 sm:px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
           <option value="">Все типы</option>
           {Object.entries(TYPE_LABELS).map(([k, v]) => (
@@ -101,7 +101,7 @@ export function InventoryPage() {
         <select
           value={filterSeverity}
           onChange={(e) => setFilterSeverity(e.target.value)}
-          className="border border-slate-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="flex-1 min-w-0 border border-slate-300 rounded-lg px-2 sm:px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
           <option value="">Все тяжести</option>
           <option value="low">Низкая</option>

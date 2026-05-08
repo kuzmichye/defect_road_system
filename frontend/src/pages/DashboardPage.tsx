@@ -58,13 +58,13 @@ export function DashboardPage() {
   const withCoords = defects.filter((d) => d.lat != null && d.lng != null).length
 
   return (
-    <div className="p-6 space-y-5">
+    <div className="p-4 sm:p-6 space-y-5">
       <div>
         <h1 className="text-2xl font-bold text-slate-800">Дашборд</h1>
         <p className="text-slate-500 text-sm mt-0.5">Общая статистика системы мониторинга</p>
       </div>
 
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
         <StatsCard
           title="Всего дефектов"
           value={stats?.total || 0}
@@ -91,7 +91,7 @@ export function DashboardPage() {
         />
       </div>
 
-      <div className="grid grid-cols-3 gap-5">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-5">
         <div className="bg-white rounded-xl p-5 shadow-sm border border-slate-100">
           <h3 className="font-semibold text-slate-700 mb-3">По типу дефекта</h3>
           {pieData.length > 0 ? (

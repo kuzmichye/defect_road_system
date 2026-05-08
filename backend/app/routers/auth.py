@@ -13,7 +13,7 @@ router = APIRouter()
 async def register(body: UserRegister, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(User).where(User.username == body.username))
     if result.scalar_one_or_none():
-        raise HTTPException(status_code=400, detail="Username already taken")
+        raise HTTPException(status_code=400, detail="Пользователь с таким именем уже существует")
     user = User(username=body.username, hashed_password=hash_password(body.password))
     db.add(user)
     await db.commit()
@@ -28,7 +28,7 @@ async def login(body: UserRegister, db: AsyncSession = Depends(get_db)):
     if not user or not verify_password(body.password, user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect username or password",
+            detail="Неверный логин или пароль",
         )
     token = create_access_token({"sub": user.username})
     return {"access_token": token, "token_type": "bearer"}

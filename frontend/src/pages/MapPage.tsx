@@ -3,18 +3,23 @@ import { useDefectStore } from '../store/defectStore'
 import { DefectMap } from '../components/Map/DefectMap'
 
 const TYPE_LABELS: Record<string, string> = {
-  pothole: 'Выбоина',
-  longitudinal_crack: 'Продольная трещина',
-  transverse_crack: 'Поперечная трещина',
-  alligator_crack: 'Сетчатые трещины',
-  other: 'Другое',
+  'potholes': 'Выбоины',
+  'alligator cracks': 'Сетка трещин',
+  'longitudnal_cracks': 'Продольные трещины',
+  'transverse cracks': 'Поперечные трещины',
+  'rutting': 'Колейность',
+  'patchy road sections': 'Ремонтные карты',
+  'lane line blurs': 'Потёртость разметки',
+  'pedestrian crossing blurs': 'Потёртость пеш. перехода',
+  'repaired cracks': 'Заделанные трещины',
 }
 
 const LEGEND = [
-  { label: 'Низкая', color: '#22c55e' },
-  { label: 'Средняя', color: '#f59e0b' },
-  { label: 'Высокая', color: '#f97316' },
+  { label: 'Низкая',      color: '#22c55e' },
+  { label: 'Средняя',     color: '#f59e0b' },
+  { label: 'Высокая',     color: '#f97316' },
   { label: 'Критическая', color: '#ef4444' },
+  { label: 'Устранён',    color: '#94a3b8' },
 ]
 
 export function MapPage() {
@@ -25,6 +30,7 @@ export function MapPage() {
   useEffect(() => { fetchDefects() }, [])
 
   const filtered = defects.filter((d) => {
+    if (d.defect_type === 'manhole covers') return false
     if (filterType && d.defect_type !== filterType) return false
     if (filterSeverity && d.severity !== filterSeverity) return false
     return d.lat != null && d.lng != null
@@ -71,7 +77,7 @@ export function MapPage() {
 
           <span className="text-slate-500 text-xs sm:text-sm">{filtered.length} маркеров</span>
 
-          {/* Legend — hidden on mobile */}
+          {/* Legend */}
           <div className="hidden sm:flex items-center gap-3">
             {LEGEND.map((item) => (
               <div key={item.label} className="flex items-center gap-1.5 text-xs text-slate-500">

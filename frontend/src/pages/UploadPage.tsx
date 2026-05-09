@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
-import { Upload, MapPin, CheckCircle, AlertCircle, Film, Image as ImageIcon, Clock, Database } from 'lucide-react'
+import { Upload, MapPin, CheckCircle, AlertCircle, Film, Image as ImageIcon, Clock, Database, X } from 'lucide-react'
 import { defectApi } from '../api/client'
+import { DefectMap } from '../components/Map/DefectMap'
 
 const TYPE_LABELS: Record<string, string> = {
   'potholes': 'Выбоины',
@@ -44,6 +45,9 @@ interface SectionState {
   frameUrls: string[]
   dragOver: boolean
   savedAt: number | null
+  lat: number | null
+  lng: number | null
+  showMap: boolean
 }
 
 const emptyState = (): SectionState => ({
@@ -59,6 +63,9 @@ const emptyState = (): SectionState => ({
   frameUrls: [],
   dragOver: false,
   savedAt: null,
+  lat: null,
+  lng: null,
+  showMap: false,
 })
 
 const STORAGE_KEY: Record<Tab, string> = {
@@ -392,6 +399,41 @@ function UploadSection({
         />
       </div>
 
+      {/* Map pin selector */}
+      <div>
+        <button
+          type="button"
+          onClick={() => onChange({ showMap: !state.showMap })}
+          className="flex items-center gap-1.5 text-sm text-blue-600 hover:underline"
+        >
+          <MapPin size={13} />
+          {state.lat != null ? 'Изменить место на карте' : 'Указать место на карте (необязательно)'}
+        </button>
+        {state.lat != null && (
+          <div className="flex items-center gap-2 mt-1">
+            <span className="text-xs text-slate-500 tabular-nums">
+              {state.lat.toFixed(5)}, {state.lng!.toFixed(5)}
+            </span>
+            <button
+              type="button"
+              onClick={() => onChange({ lat: null, lng: null })}
+              className="text-slate-400 hover:text-red-500 transition-colors"
+            >
+              <X size={13} />
+            </button>
+          </div>
+        )}
+        {state.showMap && (
+          <div className="mt-2 rounded-xl overflow-hidden border border-slate-200" style={{ height: 220 }}>
+            <DefectMap
+              height="220px"
+              onMapClick={(lat, lng) => onChange({ lat, lng, showMap: false })}
+              selectedCoords={state.lat != null ? { lat: state.lat, lng: state.lng! } : null}
+            />
+          </div>
+        )}
+      </div>
+
       {/* Submit */}
       <button
         onClick={onSubmit}
@@ -437,6 +479,8 @@ export function UploadPage() {
     fd.append('file', state.file)
     const fullAddress = [state.district, state.address].filter(Boolean).join(', ')
     if (fullAddress) fd.append('address', fullAddress)
+    if (state.lat != null) fd.append('lat', String(state.lat))
+    if (state.lng != null) fd.append('lng', String(state.lng))
 
     if (type === 'video') {
       try {

@@ -1,9 +1,15 @@
 export type DefectType =
-  | 'pothole'
-  | 'longitudinal_crack'
-  | 'transverse_crack'
-  | 'alligator_crack'
-  | 'other'
+  | 'potholes'
+  | 'alligator cracks'
+  | 'longitudnal_cracks'
+  | 'transverse cracks'
+  | 'rutting'
+  | 'patchy road sections'
+  | 'lane line blurs'
+  | 'pedestrian crossing blurs'
+  | 'manhole covers'
+  | 'repaired cracks'
+  | string
 
 export type Severity = 'low' | 'medium' | 'high' | 'critical'
 

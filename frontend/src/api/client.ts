@@ -23,7 +23,7 @@ export const defectApi = {
   delete: (id: number) => api.delete(`/inventory/defects/${id}`),
 
   detectImage: (formData: FormData) =>
-    api.post('/detection/image', formData).then((r) => r.data),
+    api.post('/detection/image', formData).then((r) => r.data as { defects: any[]; annotated_url: string | null }),
 
   detectVideo: (formData: FormData) =>
     api.post('/detection/video', formData).then((r) => r.data),

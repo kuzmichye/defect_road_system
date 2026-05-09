@@ -14,7 +14,7 @@ _SyncSession = sessionmaker(_sync_engine)
 
 @celery_app.task
 def process_video_task(filepath: str, lat, lng, address):
-    raw = _infer_video(filepath)
+    raw, frame_urls = _infer_video(filepath)
     with _SyncSession() as db:
         for det in raw:
             db.add(Defect(
@@ -28,4 +28,8 @@ def process_video_task(filepath: str, lat, lng, address):
             ))
         db.commit()
     count = len(raw)
-    return {"count": count, "message": f"Видео обработано, обнаружено дефектов: {count}"}
+    return {
+        "count": count,
+        "message": f"Видео обработано, обнаружено дефектов: {count}",
+        "frame_urls": frame_urls,
+    }

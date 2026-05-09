@@ -8,12 +8,18 @@ from app.services.auth import get_current_user
 from app.tasks import process_video_task
 from app.celery_app import celery_app
 from celery.result import AsyncResult
+from pydantic import BaseModel
 
 router = APIRouter(dependencies=[Depends(get_current_user)])
 detection_service = DetectionService()
 
 
-@router.post("/image", response_model=List[DefectOut])
+class ImageDetectionOut(BaseModel):
+    defects: List[DefectOut]
+    annotated_url: Optional[str] = None
+
+
+@router.post("/image", response_model=ImageDetectionOut)
 async def detect_from_image(
     file: UploadFile = File(...),
     lat: Optional[float] = Form(None),
@@ -21,7 +27,8 @@ async def detect_from_image(
     address: Optional[str] = Form(None),
     db: AsyncSession = Depends(get_db),
 ):
-    return await detection_service.process_image(file, lat, lng, address, db)
+    defects, annotated_url = await detection_service.process_image(file, lat, lng, address, db)
+    return {"defects": defects, "annotated_url": annotated_url}
 
 
 @router.post("/video")

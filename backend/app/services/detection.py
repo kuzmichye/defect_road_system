@@ -3,6 +3,7 @@ import uuid
 import time
 import asyncio
 import aiofiles
+import cv2
 from pathlib import Path
 from fastapi import UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,8 +22,21 @@ SEVERITY_MAP = {
     "manhole covers": "medium",
     "patchy road sections": "medium",
     "lane line blurs": "low",
-    "destrian crossing blurs": "low",
+    "pedestrian crossing blurs": "low",
     "repaired cracks": "low",
+}
+
+RUSSIAN_NAMES = {
+    "alligator cracks": "Сетка трещин",
+    "lane line blurs": "Потёртость разметки",
+    "longitudnal_cracks": "Продольные трещины",
+    "manhole covers": "Люки",
+    "patchy road sections": "Ремонтные карты",
+    "pedestrian crossing blurs": "Потёртость пеш. перехода",
+    "potholes": "Выбоины",
+    "repaired cracks": "Заделанные трещины",
+    "rutting": "Колейность",
+    "transverse cracks": "Поперечные трещины",
 }
 
 _model = None
@@ -36,11 +50,22 @@ def _load_model():
     return _model
 
 
-def _infer_image(filepath: str) -> list[dict]:
+def _save_annotated(img_bgr, prefix: str) -> str:
+    os.makedirs(settings.upload_dir, exist_ok=True)
+    filename = f"{prefix}_{uuid.uuid4().hex[:8]}.jpg"
+    path = os.path.join(settings.upload_dir, filename)
+    cv2.imwrite(path, img_bgr)
+    return f"/uploads/{filename}"
+
+
+def _infer_image(filepath: str) -> tuple[list[dict], str | None]:
     model = _load_model()
     results = model.predict(filepath, imgsz=896, conf=0.25, iou=0.45, verbose=False)
     detections = []
+    annotated_url = None
     for r in results:
+        r.names = {i: RUSSIAN_NAMES.get(name, name) for i, name in model.names.items()}
+        annotated_url = _save_annotated(r.plot(), "ann")
         for box in r.boxes:
             class_name = model.names[int(box.cls)]
             detections.append({
@@ -48,15 +73,14 @@ def _infer_image(filepath: str) -> list[dict]:
                 "severity": SEVERITY_MAP.get(class_name, "medium"),
                 "confidence": round(float(box.conf), 2),
             })
-    return detections
+    return detections, annotated_url
 
 
-def _infer_video(filepath: str) -> list[dict]:
-    import cv2
+def _infer_video(filepath: str) -> tuple[list[dict], list[str]]:
     model = _load_model()
     cap = cv2.VideoCapture(filepath)
     frame_idx = 0
-    best_by_class: dict[str, float] = {}
+    best_by_class: dict[str, dict] = {}
     while cap.isOpened():
         ret, frame = cap.read()
         if not ret:
@@ -67,14 +91,22 @@ def _infer_video(filepath: str) -> list[dict]:
                 for box in r.boxes:
                     cls = model.names[int(box.cls)]
                     conf = round(float(box.conf), 2)
-                    if best_by_class.get(cls, 0) < conf:
-                        best_by_class[cls] = conf
+                    if best_by_class.get(cls, {}).get("conf", 0) < conf:
+                        r.names = {i: RUSSIAN_NAMES.get(n, n) for i, n in model.names.items()}
+                        best_by_class[cls] = {"conf": conf, "frame": r.plot()}
         frame_idx += 1
     cap.release()
-    return [
-        {"defect_type": cls, "severity": SEVERITY_MAP.get(cls, "medium"), "confidence": conf}
-        for cls, conf in best_by_class.items()
-    ]
+
+    detections = []
+    frame_urls = []
+    for cls, data in best_by_class.items():
+        detections.append({
+            "defect_type": cls,
+            "severity": SEVERITY_MAP.get(cls, "medium"),
+            "confidence": data["conf"],
+        })
+        frame_urls.append(_save_annotated(data["frame"], f"frame_{cls.replace(' ', '_')}"))
+    return detections, frame_urls
 
 
 class DetectionService:
@@ -91,7 +123,7 @@ class DetectionService:
 
         t0 = time.perf_counter()
         loop = asyncio.get_event_loop()
-        raw = await loop.run_in_executor(None, _infer_image, filepath)
+        raw, annotated_url = await loop.run_in_executor(None, _infer_image, filepath)
         detection_duration_seconds.labels(source_type="image").observe(time.perf_counter() - t0)
 
         detections = []
@@ -117,32 +149,4 @@ class DetectionService:
         await db.commit()
         for d in detections:
             await db.refresh(d)
-        return detections
-
-    async def process_video(self, file: UploadFile, lat, lng, address, db: AsyncSession):
-        filepath = await self._save_file(file)
-
-        t0 = time.perf_counter()
-        loop = asyncio.get_event_loop()
-        raw = await loop.run_in_executor(None, _infer_video, filepath)
-        detection_duration_seconds.labels(source_type="video").observe(time.perf_counter() - t0)
-
-        count = len(raw)
-        for det in raw:
-            db.add(Defect(
-                defect_type=det["defect_type"],
-                severity=det["severity"],
-                confidence=det["confidence"],
-                lat=lat,
-                lng=lng,
-                address=address,
-                source_type="video",
-            ))
-            defect_detections_total.labels(
-                defect_type=det["defect_type"],
-                severity=det["severity"],
-                source_type="video",
-            ).inc()
-
-        await db.commit()
-        return {"message": f"Видео обработано, обнаружено дефектов: {count}", "count": count}
+        return detections, annotated_url

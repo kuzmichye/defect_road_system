@@ -28,6 +28,25 @@ services:
       - ./backend:/app
       - uploads:/app/uploads
 
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  celery_worker:
+    build: ./backend
+    command: celery -A app.celery_app worker --loglevel=info -P solo
+    env_file:
+      - ./backend/.env
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    volumes:
+      - ./backend:/app
+      - uploads:/app/uploads
+
   frontend:
     build: ./frontend
     ports:

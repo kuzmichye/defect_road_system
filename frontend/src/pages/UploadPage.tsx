@@ -173,6 +173,11 @@ function UploadSection({
           ? 'Обработать видео'
           : 'Определить дефекты'}
       </button>
+      {state.loading && type === 'video' && (
+        <p className="text-xs text-slate-400 text-center">
+          Видео анализируется в фоне — не закрывайте страницу
+        </p>
+      )}
 
       {/* Error */}
       {state.error && (
@@ -233,20 +238,38 @@ export function UploadPage() {
     const state = type === 'photo' ? photo : video
     const patch = type === 'photo' ? patchPhoto : patchVideo
     if (!state.file) return
-    patch({ loading: true, error: null, results: null, videoResult: null })
-    try {
-      const fd = new FormData()
-      fd.append('file', state.file)
-      const fullAddress = [state.district, state.address].filter(Boolean).join(', ')
-      if (fullAddress) fd.append('address', fullAddress)
 
-      if (type === 'video') {
-        const r = await defectApi.detectVideo(fd)
-        patch({ videoResult: r })
-      } else {
-        const r = await defectApi.detectImage(fd)
-        patch({ results: r })
+    patch({ loading: true, error: null, results: null, videoResult: null })
+
+    const fd = new FormData()
+    fd.append('file', state.file)
+    const fullAddress = [state.district, state.address].filter(Boolean).join(', ')
+    if (fullAddress) fd.append('address', fullAddress)
+
+    if (type === 'video') {
+      try {
+        const { task_id } = await defectApi.detectVideo(fd)
+        for (;;) {
+          await new Promise((res) => setTimeout(res, 3000))
+          const status = await defectApi.getVideoStatus(task_id)
+          if (status.status === 'done') {
+            patch({ videoResult: { message: status.message, count: status.count }, loading: false })
+            return
+          }
+          if (status.status === 'error') {
+            patch({ error: status.message || 'Ошибка при обработке видео', loading: false })
+            return
+          }
+        }
+      } catch (e: any) {
+        patch({ error: e?.response?.data?.detail || e.message || 'Ошибка при обработке', loading: false })
       }
+      return
+    }
+
+    try {
+      const r = await defectApi.detectImage(fd)
+      patch({ results: r })
     } catch (e: any) {
       patch({ error: e?.response?.data?.detail || e.message || 'Ошибка при обработке' })
     } finally {

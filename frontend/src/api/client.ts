@@ -28,6 +28,9 @@ export const defectApi = {
   detectVideo: (formData: FormData) =>
     api.post('/detection/video', formData).then((r) => r.data),
 
+  getVideoStatus: (taskId: string) =>
+    api.get(`/detection/video/status/${taskId}`).then((r) => r.data),
+
   exportCsv: () =>
     api.get('/export/csv', { responseType: 'blob' }).then((r) => r.data),
 

@@ -1,5 +1,5 @@
-import { useState, useRef } from 'react'
-import { Upload, MapPin, CheckCircle, AlertCircle, Film, Image as ImageIcon } from 'lucide-react'
+import { useState, useRef, useEffect } from 'react'
+import { Upload, MapPin, CheckCircle, AlertCircle, Film, Image as ImageIcon, Clock, Database } from 'lucide-react'
 import { defectApi } from '../api/client'
 
 const TYPE_LABELS: Record<string, string> = {
@@ -36,12 +36,14 @@ interface SectionState {
   address: string
   district: string
   loading: boolean
+  loadingStartTime: number | null
   error: string | null
   results: any[] | null
   annotatedUrl: string | null
   videoResult: { message: string; count: number } | null
   frameUrls: string[]
   dragOver: boolean
+  savedAt: number | null
 }
 
 const emptyState = (): SectionState => ({
@@ -49,13 +51,127 @@ const emptyState = (): SectionState => ({
   address: '',
   district: '',
   loading: false,
+  loadingStartTime: null,
   error: null,
   results: null,
   annotatedUrl: null,
   videoResult: null,
   frameUrls: [],
   dragOver: false,
+  savedAt: null,
 })
+
+const STORAGE_KEY: Record<Tab, string> = {
+  photo: 'defect_result_photo',
+  video: 'defect_result_video',
+}
+
+function loadSaved(type: Tab): Partial<SectionState> | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY[type])
+    if (!raw) return null
+    return JSON.parse(raw)
+  } catch {
+    return null
+  }
+}
+
+function persistResult(type: Tab, patch: Partial<SectionState>, base: SectionState) {
+  const data = {
+    results: patch.results ?? base.results,
+    annotatedUrl: patch.annotatedUrl ?? base.annotatedUrl,
+    videoResult: patch.videoResult ?? base.videoResult,
+    frameUrls: patch.frameUrls ?? base.frameUrls,
+    address: base.address,
+    district: base.district,
+    savedAt: patch.savedAt ?? Date.now(),
+  }
+  localStorage.setItem(STORAGE_KEY[type], JSON.stringify(data))
+}
+
+function relativeTime(ts: number): string {
+  const diff = Math.floor((Date.now() - ts) / 1000)
+  if (diff < 60) return 'только что'
+  if (diff < 3600) return `${Math.floor(diff / 60)} мин. назад`
+  if (diff < 86400) return `${Math.floor(diff / 3600)} ч. назад`
+  return `${Math.floor(diff / 86400)} д. назад`
+}
+
+function VideoProgress({ startTime }: { startTime: number }) {
+  const [elapsed, setElapsed] = useState(() => Math.floor((Date.now() - startTime) / 1000))
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      setElapsed(Math.floor((Date.now() - startTime) / 1000))
+    }, 1000)
+    return () => clearInterval(id)
+  }, [startTime])
+
+  const progress = Math.min(92, 100 * (1 - Math.exp(-elapsed / 50)))
+  const minutes = Math.floor(elapsed / 60)
+  const seconds = elapsed % 60
+
+  const stages = [
+    { label: 'Загрузка видео',           done: elapsed >= 4,  active: elapsed < 4  },
+    { label: 'Анализ кадров',            done: false,         active: elapsed >= 4  },
+    { label: 'Сохранение результатов',   done: false,         active: false         },
+  ]
+
+  return (
+    <div className="space-y-5 py-1">
+      <div className="flex items-center justify-between">
+        <p className="text-sm font-semibold text-slate-700">Анализ видео</p>
+        <div className="flex items-center gap-1 text-slate-400 text-xs tabular-nums">
+          <Clock size={11} />
+          {minutes}:{String(seconds).padStart(2, '0')}
+        </div>
+      </div>
+
+      {/* Progress bar */}
+      <div className="space-y-1.5">
+        <div className="relative h-2 bg-slate-100 rounded-full overflow-hidden">
+          <div
+            className="absolute inset-y-0 left-0 bg-gradient-to-r from-blue-600 to-blue-400 rounded-full transition-all duration-[1200ms] ease-out"
+            style={{ width: `${progress}%` }}
+          />
+          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent animate-pulse rounded-full pointer-events-none" />
+        </div>
+        <div className="flex justify-between text-xs text-slate-400">
+          <span>Обрабатывается...</span>
+          <span className="tabular-nums">{Math.round(progress)}%</span>
+        </div>
+      </div>
+
+      {/* Stages */}
+      <div className="space-y-3">
+        {stages.map((stage, i) => (
+          <div key={i} className="flex items-center gap-2.5">
+            <div className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 transition-colors ${
+              stage.done ? 'bg-green-100' : stage.active ? 'bg-blue-100' : 'bg-slate-100'
+            }`}>
+              {stage.done ? (
+                <CheckCircle size={12} className="text-green-600" />
+              ) : stage.active ? (
+                <div className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse" />
+              ) : (
+                <div className="w-1.5 h-1.5 bg-slate-300 rounded-full" />
+              )}
+            </div>
+            <span className={`text-sm transition-colors ${
+              stage.done    ? 'text-slate-400 line-through' :
+              stage.active  ? 'text-slate-700 font-medium'  :
+                              'text-slate-400'
+            }`}>
+              {stage.label}
+            </span>
+          </div>
+        ))}
+      </div>
+
+      <p className="text-xs text-slate-400 text-center">Не закрывайте страницу</p>
+    </div>
+  )
+}
 
 function UploadSection({
   type,
@@ -92,9 +208,32 @@ function UploadSection({
     if (f) onChange({ file: f, results: null, annotatedUrl: null, videoResult: null, frameUrls: [], error: null })
   }
 
+  // Video processing — show progress bar
+  if (state.loading && type === 'video' && state.loadingStartTime) {
+    return <VideoProgress startTime={state.loadingStartTime} />
+  }
+
+  // Photo processing — show spinner
+  if (state.loading && type === 'photo') {
+    return (
+      <div className="flex flex-col items-center justify-center py-12 gap-3">
+        <div className="w-10 h-10 border-2 border-blue-200 border-t-blue-600 rounded-full animate-spin" />
+        <p className="text-sm text-slate-600 font-medium">Анализ изображения...</p>
+      </div>
+    )
+  }
+
   if (hasResult) {
     return (
       <div className="space-y-4">
+        {/* Saved indicator */}
+        {state.savedAt != null && (
+          <div className="flex items-center gap-1.5 text-xs text-green-600">
+            <Database size={11} />
+            Сохранено в базу данных · {relativeTime(state.savedAt)}
+          </div>
+        )}
+
         {/* Annotated image */}
         {state.annotatedUrl && (
           <div>
@@ -170,7 +309,7 @@ function UploadSection({
           onClick={onReset}
           className="w-full border border-slate-300 text-slate-600 hover:bg-slate-50 font-medium py-2.5 rounded-lg transition-colors text-sm"
         >
-          ← Вернуться к загрузке
+          ← Загрузить новый файл
         </button>
       </div>
     )
@@ -259,13 +398,8 @@ function UploadSection({
         disabled={!state.file || state.loading}
         className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-400 text-white font-medium py-2.5 rounded-lg transition-colors text-sm"
       >
-        {state.loading ? 'Обрабатывается...' : type === 'video' ? 'Обработать видео' : 'Определить дефекты'}
+        {type === 'video' ? 'Обработать видео' : 'Определить дефекты'}
       </button>
-      {state.loading && type === 'video' && (
-        <p className="text-xs text-slate-400 text-center">
-          Видео анализируется в фоне — не закрывайте страницу
-        </p>
-      )}
 
       {/* Error */}
       {state.error && (
@@ -280,8 +414,14 @@ function UploadSection({
 
 export function UploadPage() {
   const [tab, setTab] = useState<Tab>('photo')
-  const [photo, setPhoto] = useState<SectionState>(emptyState())
-  const [video, setVideo] = useState<SectionState>(emptyState())
+  const [photo, setPhoto] = useState<SectionState>(() => {
+    const saved = loadSaved('photo')
+    return saved ? { ...emptyState(), ...saved } : emptyState()
+  })
+  const [video, setVideo] = useState<SectionState>(() => {
+    const saved = loadSaved('video')
+    return saved ? { ...emptyState(), ...saved } : emptyState()
+  })
 
   const patchPhoto = (p: Partial<SectionState>) => setPhoto((s) => ({ ...s, ...p }))
   const patchVideo = (p: Partial<SectionState>) => setVideo((s) => ({ ...s, ...p }))
@@ -291,7 +431,7 @@ export function UploadPage() {
     const patch = type === 'photo' ? patchPhoto : patchVideo
     if (!state.file) return
 
-    patch({ loading: true, error: null, results: null, annotatedUrl: null, videoResult: null, frameUrls: [] })
+    patch({ loading: true, error: null, results: null, annotatedUrl: null, videoResult: null, frameUrls: [], loadingStartTime: Date.now(), savedAt: null })
 
     const fd = new FormData()
     fd.append('file', state.file)
@@ -305,11 +445,15 @@ export function UploadPage() {
           await new Promise((res) => setTimeout(res, 3000))
           const status = await defectApi.getVideoStatus(task_id)
           if (status.status === 'done') {
-            patch({
+            const savedAt = Date.now()
+            const result: Partial<SectionState> = {
               videoResult: { message: status.message, count: status.count },
               frameUrls: status.frame_urls || [],
               loading: false,
-            })
+              savedAt,
+            }
+            patch(result)
+            persistResult(type, result, state)
             return
           }
           if (status.status === 'error') {
@@ -325,12 +469,21 @@ export function UploadPage() {
 
     try {
       const r = await defectApi.detectImage(fd)
-      patch({ results: r.defects, annotatedUrl: r.annotated_url })
+      const savedAt = Date.now()
+      const result: Partial<SectionState> = { results: r.defects, annotatedUrl: r.annotated_url, savedAt }
+      patch(result)
+      persistResult(type, result, state)
     } catch (e: any) {
       patch({ error: e?.response?.data?.detail || e.message || 'Ошибка при обработке' })
     } finally {
       patch({ loading: false })
     }
+  }
+
+  const resetSection = (type: Tab) => {
+    localStorage.removeItem(STORAGE_KEY[type])
+    if (type === 'photo') setPhoto(emptyState())
+    else setVideo(emptyState())
   }
 
   return (
@@ -370,7 +523,7 @@ export function UploadPage() {
             state={photo}
             onChange={patchPhoto}
             onSubmit={() => handleSubmit('photo')}
-            onReset={() => patchPhoto(emptyState())}
+            onReset={() => resetSection('photo')}
           />
         ) : (
           <UploadSection
@@ -378,7 +531,7 @@ export function UploadPage() {
             state={video}
             onChange={patchVideo}
             onSubmit={() => handleSubmit('video')}
-            onReset={() => patchVideo(emptyState())}
+            onReset={() => resetSection('video')}
           />
         )}
       </div>

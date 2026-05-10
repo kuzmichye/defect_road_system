@@ -35,6 +35,7 @@ services:
       - "6379:6379"
 
   celery_worker:
+    build: ./backend
     image: defect_road_backend
     command: celery -A app.celery_app worker --loglevel=info -P solo
     env_file:

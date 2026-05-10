@@ -4,12 +4,25 @@ import time
 import asyncio
 import aiofiles
 import cv2
+import json
+import urllib.request
 from pathlib import Path
 from fastapi import UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.defect import Defect
 from app.config import settings
 from app.metrics import defect_detections_total, detection_duration_seconds
+
+
+def _reverse_geocode(lat: float, lng: float) -> str:
+    url = f"https://nominatim.openstreetmap.org/reverse?lat={lat}&lon={lng}&format=json"
+    req = urllib.request.Request(url, headers={"User-Agent": "DefectRoadApp/1.0"})
+    try:
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            data = json.loads(resp.read())
+            return data.get("display_name", "")
+    except Exception:
+        return ""
 
 MODEL_PATH = Path(__file__).resolve().parent.parent.parent / "models" / "best.pt"
 
@@ -130,6 +143,9 @@ class DetectionService:
         loop = asyncio.get_event_loop()
         raw, annotated_url = await loop.run_in_executor(None, _infer_image, filepath)
         detection_duration_seconds.labels(source_type="image").observe(time.perf_counter() - t0)
+
+        if lat and lng and not address:
+            address = await loop.run_in_executor(None, _reverse_geocode, lat, lng)
 
         detections = []
         for det in raw:

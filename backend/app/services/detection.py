@@ -197,7 +197,7 @@ def _infer_video(filepath: str) -> tuple[list[dict], str | None]:
         infer_frame = _apply_clahe(crop_frame)
 
         results = model.track(
-            infer_frame, imgsz=640, conf=0.25, iou=0.45,
+            infer_frame, imgsz=640, conf=0.15, iou=0.45,
             verbose=False, tracker="bytetrack.yaml", persist=True,
         )
         full_annotated = frame.copy()

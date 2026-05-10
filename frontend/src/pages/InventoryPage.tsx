@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
-import { Trash2, Download, Filter, FileJson, MapPin } from 'lucide-react'
+import { Trash2, FileSpreadsheet, Filter, MapPin } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
+import * as XLSX from 'xlsx'
 import { useDefectStore } from '../store/defectStore'
-import { defectApi } from '../api/client'
 import { TYPE_COLORS } from '../components/Map/DefectMap'
 
 const TYPE_LABELS: Record<string, string> = {
@@ -30,25 +30,20 @@ export function InventoryPage() {
     return true
   })
 
-  const handleExportCsv = async () => {
-    const blob = await defectApi.exportCsv()
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = 'defects.csv'
-    a.click()
-    URL.revokeObjectURL(url)
-  }
-
-  const handleExportGeoJson = async () => {
-    const data = await defectApi.exportGeoJson()
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = 'defects.geojson'
-    a.click()
-    URL.revokeObjectURL(url)
+  const handleExportExcel = () => {
+    const rows = filtered.map((d) => ({
+      'ID': d.id,
+      'Тип дефекта': TYPE_LABELS[d.defect_type] || d.defect_type,
+      'Широта': d.lat ?? '',
+      'Долгота': d.lng ?? '',
+      'Адрес': d.address ?? '',
+      'Дата': new Date(d.detected_at).toLocaleDateString('ru'),
+      'Источник': d.source_type === 'video' ? 'Видео' : 'Фото',
+    }))
+    const ws = XLSX.utils.json_to_sheet(rows)
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Дефекты')
+    XLSX.writeFile(wb, 'defects.xlsx')
   }
 
   return (
@@ -59,22 +54,13 @@ export function InventoryPage() {
           <h1 className="text-2xl font-bold text-slate-800">Инвентаризация</h1>
           <p className="text-slate-500 text-sm mt-0.5">{filtered.length} дефектов</p>
         </div>
-        <div className="flex gap-2 flex-shrink-0">
-          <button
-            onClick={handleExportGeoJson}
-            className="flex items-center gap-1.5 px-3 py-2 border border-slate-300 rounded-lg text-sm text-slate-600 hover:bg-slate-50 transition-colors"
-          >
-            <FileJson size={15} />
-            GeoJSON
-          </button>
-          <button
-            onClick={handleExportCsv}
-            className="flex items-center gap-1.5 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm transition-colors"
-          >
-            <Download size={15} />
-            CSV
-          </button>
-        </div>
+        <button
+          onClick={handleExportExcel}
+          className="flex items-center gap-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm transition-colors"
+        >
+          <FileSpreadsheet size={15} />
+          Excel
+        </button>
       </div>
 
       {/* Filter */}
@@ -106,7 +92,7 @@ export function InventoryPage() {
           <table className="w-full text-xs sm:text-sm">
             <thead className="bg-slate-50 border-b border-slate-100">
               <tr>
-                {['ID', 'Тип', 'Коорд.', 'Место', 'Дата', 'Ист.', ''].map((h) => (
+                {['ID', 'Тип', 'Коорд.', 'Дата', 'Ист.', ''].map((h) => (
                   <th key={h} className="text-left px-2 sm:px-4 py-2 text-slate-500 font-medium whitespace-nowrap">
                     {h}
                   </th>
@@ -141,9 +127,6 @@ export function InventoryPage() {
                       ? <span className="flex items-center gap-1"><MapPin size={11} className="text-slate-300" />{d.lat.toFixed(3)}, {d.lng.toFixed(3)}</span>
                       : '—'}
                   </td>
-                  <td className="px-2 sm:px-4 py-2 text-slate-500 max-w-[120px] sm:max-w-xs truncate">
-                    {d.address || '—'}
-                  </td>
                   <td className="px-2 sm:px-4 py-2 text-slate-500 whitespace-nowrap">
                     {new Date(d.detected_at).toLocaleDateString('ru')}
                   </td>
@@ -168,7 +151,7 @@ export function InventoryPage() {
               ))}
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-4 py-10 text-center text-slate-400 text-sm">
+                  <td colSpan={6} className="px-4 py-10 text-center text-slate-400 text-sm">
                     Дефекты не найдены
                   </td>
                 </tr>

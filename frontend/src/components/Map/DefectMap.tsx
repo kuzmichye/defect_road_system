@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { MapContainer, TileLayer, Marker, Popup, useMapEvents, useMap } from 'react-leaflet'
+import MarkerClusterGroup from 'react-leaflet-cluster'
 import 'leaflet/dist/leaflet.css'
 import L from 'leaflet'
 import type { Defect } from '../../types'
@@ -91,26 +92,28 @@ export function DefectMap({ defects = [], onMapClick, selectedCoords, focusLocat
       {selectedCoords && (
         <Marker position={[selectedCoords.lat, selectedCoords.lng]} icon={selectedIcon} />
       )}
-      {defects
-        .filter((d) => d.lat != null && d.lng != null)
-        .map((defect) => (
-          <Marker
-            key={defect.id}
-            position={[defect.lat!, defect.lng!]}
-            icon={createDefectIcon(defect.defect_type)}
-          >
-            <Popup>
-              <div style={{ minWidth: 160 }}>
-                <p style={{ fontWeight: 600, marginBottom: 4 }}>
-                  {TYPE_LABELS[defect.defect_type] || defect.defect_type}
-                </p>
-                {defect.address && (
-                  <p style={{ color: '#9ca3af', fontSize: '0.8rem', marginTop: 4 }}>{defect.address}</p>
-                )}
-              </div>
-            </Popup>
-          </Marker>
-        ))}
+      <MarkerClusterGroup chunkedLoading>
+        {defects
+          .filter((d) => d.lat != null && d.lng != null)
+          .map((defect) => (
+            <Marker
+              key={defect.id}
+              position={[defect.lat!, defect.lng!]}
+              icon={createDefectIcon(defect.defect_type)}
+            >
+              <Popup>
+                <div style={{ minWidth: 160 }}>
+                  <p style={{ fontWeight: 600, marginBottom: 4 }}>
+                    {TYPE_LABELS[defect.defect_type] || defect.defect_type}
+                  </p>
+                  {defect.address && (
+                    <p style={{ color: '#9ca3af', fontSize: '0.8rem', marginTop: 4 }}>{defect.address}</p>
+                  )}
+                </div>
+              </Popup>
+            </Marker>
+          ))}
+      </MarkerClusterGroup>
     </MapContainer>
   )
 }

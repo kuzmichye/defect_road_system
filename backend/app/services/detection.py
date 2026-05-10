@@ -3,6 +3,7 @@ import uuid
 import time
 import asyncio
 import aiofiles
+import subprocess
 import cv2
 import json
 import urllib.request
@@ -53,6 +54,15 @@ RUSSIAN_NAMES = {
 }
 
 _model = None
+BLUR_THRESHOLD = 100  # Laplacian variance below this → frame is too blurry for inference
+
+
+def _apply_clahe(img_bgr):
+    lab = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2LAB)
+    l, a, b = cv2.split(lab)
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    l = clahe.apply(l)
+    return cv2.cvtColor(cv2.merge([l, a, b]), cv2.COLOR_LAB2BGR)
 
 
 def _load_model():
@@ -86,7 +96,8 @@ def _crop_bytes(img_bgr, box) -> bytes | None:
 def _infer_image(filepath: str) -> tuple[list[dict], str | None]:
     model = _load_model()
     img_bgr = cv2.imread(filepath)
-    results = model.predict(filepath, imgsz=896, conf=0.25, iou=0.45, verbose=False)
+    infer_src = _apply_clahe(img_bgr) if img_bgr is not None else filepath
+    results = model.predict(infer_src, imgsz=896, conf=0.25, iou=0.45, verbose=False)
     detections = []
     annotated_url = None
     for r in results:
@@ -105,6 +116,48 @@ def _infer_image(filepath: str) -> tuple[list[dict], str | None]:
     return detections, annotated_url
 
 
+def _extract_video_gps(filepath: str) -> tuple[float, float] | None:
+    import re
+    try:
+        r = subprocess.run(
+            ['ffprobe', '-v', 'quiet', '-print_format', 'json', '-show_format', filepath],
+            capture_output=True, text=True, timeout=30,
+        )
+        if r.returncode != 0:
+            return None
+        tags = json.loads(r.stdout).get('format', {}).get('tags', {})
+        location = (
+            tags.get('com.apple.quicktime.location.ISO6709') or
+            tags.get('location') or
+            tags.get('location-eng')
+        )
+        if not location:
+            return None
+        m = re.match(r'([+-]\d+\.?\d*)([+-]\d+\.?\d*)', location)
+        if m:
+            return float(m.group(1)), float(m.group(2))
+    except Exception:
+        pass
+    return None
+
+
+def _transcode_h264(src_path: str) -> str:
+    dst_path = src_path.replace('.mp4', '_web.mp4')
+    try:
+        r = subprocess.run(
+            ['ffmpeg', '-i', src_path,
+             '-vcodec', 'libx264', '-preset', 'fast', '-crf', '23',
+             '-movflags', '+faststart', '-y', dst_path],
+            capture_output=True, timeout=300,
+        )
+        if r.returncode == 0:
+            os.remove(src_path)
+            return dst_path
+    except Exception:
+        pass
+    return src_path
+
+
 def _infer_video(filepath: str) -> tuple[list[dict], str | None]:
     model = _load_model()
     cap = cv2.VideoCapture(filepath)
@@ -121,6 +174,8 @@ def _infer_video(filepath: str) -> tuple[list[dict], str | None]:
     out_path = os.path.join(settings.upload_dir, out_filename)
     writer = cv2.VideoWriter(out_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, (width, height))
 
+    y_offset = int(height * 0.3)  # infer on bottom 70%, skip sky/trees/cars
+
     best_by_track: dict[int, dict] = {}
     best_by_class: dict[str, dict] = {}
     frame_idx = 0
@@ -130,19 +185,31 @@ def _infer_video(filepath: str) -> tuple[list[dict], str | None]:
         if not ret:
             break
 
+        # Blur filter — write frame as-is, skip inference
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        if cv2.Laplacian(gray, cv2.CV_64F).var() < BLUR_THRESHOLD:
+            writer.write(frame)
+            frame_idx += 1
+            continue
+
+        # Crop bottom 70% + CLAHE before inference
+        crop_frame = frame[y_offset:, :]
+        infer_frame = _apply_clahe(crop_frame)
+
         results = model.track(
-            frame, imgsz=640, conf=0.25, iou=0.45,
+            infer_frame, imgsz=640, conf=0.25, iou=0.45,
             verbose=False, tracker="bytetrack.yaml", persist=True,
         )
+        full_annotated = frame.copy()
         for r in results:
             r.names = {i: RUSSIAN_NAMES.get(n, n) for i, n in model.names.items()}
-            writer.write(r.plot())
+            full_annotated[y_offset:] = r.plot()
             for box in r.boxes:
                 cls = model.names[int(box.cls)]
                 if cls == "manhole covers":
                     continue
                 conf = round(float(box.conf), 2)
-                crop = _crop_bytes(frame, box)
+                crop = _crop_bytes(crop_frame, box)
                 track_id = int(box.id.item()) if box.id is not None else None
                 if track_id is not None:
                     if best_by_track.get(track_id, {}).get("conf", 0) < conf:
@@ -150,31 +217,36 @@ def _infer_video(filepath: str) -> tuple[list[dict], str | None]:
                 else:
                     if best_by_class.get(cls, {}).get("conf", 0) < conf:
                         best_by_class[cls] = {"conf": conf, "crop_bytes": crop}
+        writer.write(full_annotated)
         frame_idx += 1
 
     cap.release()
     writer.release()
+    out_path = _transcode_h264(out_path)
+    out_filename = os.path.basename(out_path)
 
-    # Collapse tracks → best per class
-    final: dict[str, dict] = {}
-    for td in best_by_track.values():
-        cls = td["cls"]
-        if final.get(cls, {}).get("conf", 0) < td["conf"]:
-            final[cls] = td
-    for cls, d in best_by_class.items():
-        if cls not in final:
-            final[cls] = d
-
+    # All unique tracks — one detection per track ID (Option B)
     detections = [
         {
-            "defect_type": cls,
-            "severity": SEVERITY_MAP.get(cls, "medium"),
-            "confidence": d["conf"],
-            "crop_bytes": d.get("crop_bytes"),
+            "defect_type": td["cls"],
+            "severity": SEVERITY_MAP.get(td["cls"], "medium"),
+            "confidence": td["conf"],
+            "crop_bytes": td.get("crop_bytes"),
         }
-        for cls, d in final.items()
+        for td in best_by_track.values()
     ]
+    # Fallback: classes detected without a track ID, not already covered
+    tracked_classes = {td["cls"] for td in best_by_track.values()}
+    for cls, d in best_by_class.items():
+        if cls not in tracked_classes:
+            detections.append({
+                "defect_type": cls,
+                "severity": SEVERITY_MAP.get(cls, "medium"),
+                "confidence": d["conf"],
+                "crop_bytes": d.get("crop_bytes"),
+            })
     return detections, f"/uploads/{out_filename}"
+
 
 
 class DetectionService:

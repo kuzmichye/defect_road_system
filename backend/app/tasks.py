@@ -1,5 +1,5 @@
 from app.celery_app import celery_app
-from app.services.detection import _infer_video, _reverse_geocode
+from app.services.detection import _infer_video, _reverse_geocode, _extract_video_gps
 from app.models.defect import Defect
 from app.config import settings
 from sqlalchemy import create_engine
@@ -14,6 +14,10 @@ _SyncSession = sessionmaker(_sync_engine)
 
 @celery_app.task
 def process_video_task(filepath: str, lat, lng, address):
+    if not lat or not lng:
+        gps = _extract_video_gps(filepath)
+        if gps:
+            lat, lng = gps
     if lat and lng and not address:
         address = _reverse_geocode(lat, lng)
     raw, annotated_video_url = _infer_video(filepath)

@@ -63,6 +63,7 @@ const STORAGE_KEY: Record<Tab, string> = {
   photo: 'defect_result_photo',
   video: 'defect_result_video',
 }
+const VIDEO_TASK_KEY = 'defect_video_pending_task'
 
 function loadSaved(type: Tab): Partial<SectionState> | null {
   try {
@@ -210,7 +211,7 @@ function UploadSection({
   const inputRef = useRef<HTMLInputElement>(null)
   const accept = type === 'photo' ? 'image/*' : 'video/*'
   const hasResult = state.results !== null || state.videoResult !== null || state.annotatedVideoUrl !== null
-  const locationReady = state.lat != null && state.lng != null
+  const locationReady = type === 'video' || (state.lat != null && state.lng != null)
 
   const handleFileSelect = async (f: File) => {
     const valid = type === 'photo' ? f.type.startsWith('image/') : f.type.startsWith('video/')
@@ -439,15 +440,20 @@ function UploadSection({
             </div>
           )}
 
-          {/* No GPS — mandatory map picker */}
+          {/* No GPS — map picker (mandatory for photo, optional for video) */}
           {state.geoChecked && !state.hasGeoTag && (
             <div className="space-y-3">
-              <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
-                <AlertCircle size={15} className="text-amber-500 flex-shrink-0" />
-                <p className="text-sm text-amber-800">
-                  Геометка не найдена — укажите место на карте
-                </p>
-              </div>
+              {type === 'photo' ? (
+                <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+                  <AlertCircle size={15} className="text-amber-500 flex-shrink-0" />
+                  <p className="text-sm text-amber-800">Геометка не найдена — укажите место на карте</p>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3">
+                  <MapPin size={15} className="text-slate-400 flex-shrink-0" />
+                  <p className="text-sm text-slate-600">GPS будет извлечён из видео автоматически — или укажите на карте</p>
+                </div>
+              )}
 
               {/* Address search */}
               <div className="flex gap-2">
@@ -537,12 +543,72 @@ export function UploadPage() {
   const patchPhoto = (p: Partial<SectionState>) => setPhoto((s) => ({ ...s, ...p }))
   const patchVideo = (p: Partial<SectionState>) => setVideo((s) => ({ ...s, ...p }))
 
+  const pollingRef = useRef(false)
+
+  const pollVideoTask = async (task_id: string) => {
+    if (pollingRef.current) return
+    pollingRef.current = true
+    for (;;) {
+      await new Promise((res) => setTimeout(res, 3000))
+      try {
+        const status = await defectApi.getVideoStatus(task_id)
+        if (status.status === 'done') {
+          localStorage.removeItem(VIDEO_TASK_KEY)
+          const savedAt = Date.now()
+          const result: Partial<SectionState> = {
+            videoResult: { message: status.message, count: status.count },
+            annotatedVideoUrl: status.annotated_video_url ?? null,
+            results: status.defects ?? [],
+            loading: false,
+            savedAt,
+          }
+          setVideo((s) => ({ ...s, ...result }))
+          persistResult('video', result, emptyState())
+          pollingRef.current = false
+          return
+        }
+        if (status.status === 'error') {
+          localStorage.removeItem(VIDEO_TASK_KEY)
+          setVideo((s) => ({ ...s, error: status.message || 'Ошибка при обработке видео', loading: false }))
+          pollingRef.current = false
+          return
+        }
+      } catch (e: any) {
+        localStorage.removeItem(VIDEO_TASK_KEY)
+        setVideo((s) => ({ ...s, error: e?.response?.data?.detail || e.message || 'Ошибка', loading: false }))
+        pollingRef.current = false
+        return
+      }
+    }
+  }
+
+  // Resume polling if user navigated away during video processing
+  useEffect(() => {
+    const raw = localStorage.getItem(VIDEO_TASK_KEY)
+    if (!raw) return
+    try {
+      const { task_id, loadingStartTime } = JSON.parse(raw)
+      const saved = loadSaved('video')
+      if (saved?.videoResult || saved?.annotatedVideoUrl) {
+        localStorage.removeItem(VIDEO_TASK_KEY)
+        return
+      }
+      setTab('video')
+      setVideo((s) => ({ ...s, loading: true, loadingStartTime }))
+      pollVideoTask(task_id)
+    } catch {
+      localStorage.removeItem(VIDEO_TASK_KEY)
+    }
+  }, [])
+
   const handleSubmit = async (type: Tab) => {
     const state = type === 'photo' ? photo : video
     const patch = type === 'photo' ? patchPhoto : patchVideo
-    if (!state.file || state.lat == null || state.lng == null) return
+    if (!state.file) return
+    if (type === 'photo' && (state.lat == null || state.lng == null)) return
 
-    patch({ loading: true, error: null, results: null, annotatedUrl: null, videoResult: null, annotatedVideoUrl: null, loadingStartTime: Date.now(), savedAt: null })
+    const startTime = Date.now()
+    patch({ loading: true, error: null, results: null, annotatedUrl: null, videoResult: null, annotatedVideoUrl: null, loadingStartTime: startTime, savedAt: null })
 
     const fd = new FormData()
     fd.append('file', state.file)
@@ -552,27 +618,8 @@ export function UploadPage() {
     if (type === 'video') {
       try {
         const { task_id } = await defectApi.detectVideo(fd)
-        for (;;) {
-          await new Promise((res) => setTimeout(res, 3000))
-          const status = await defectApi.getVideoStatus(task_id)
-          if (status.status === 'done') {
-            const savedAt = Date.now()
-            const result: Partial<SectionState> = {
-              videoResult: { message: status.message, count: status.count },
-              annotatedVideoUrl: status.annotated_video_url ?? null,
-              results: status.defects ?? [],
-              loading: false,
-              savedAt,
-            }
-            patch(result)
-            persistResult(type, result, state)
-            return
-          }
-          if (status.status === 'error') {
-            patch({ error: status.message || 'Ошибка при обработке видео', loading: false })
-            return
-          }
-        }
+        localStorage.setItem(VIDEO_TASK_KEY, JSON.stringify({ task_id, loadingStartTime: startTime }))
+        await pollVideoTask(task_id)
       } catch (e: any) {
         patch({ error: e?.response?.data?.detail || e.message || 'Ошибка при обработке', loading: false })
       }
@@ -594,6 +641,7 @@ export function UploadPage() {
 
   const resetSection = (type: Tab) => {
     localStorage.removeItem(STORAGE_KEY[type])
+    if (type === 'video') localStorage.removeItem(VIDEO_TASK_KEY)
     if (type === 'photo') setPhoto(emptyState())
     else setVideo(emptyState())
   }

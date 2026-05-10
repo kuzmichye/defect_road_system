@@ -54,7 +54,7 @@ RUSSIAN_NAMES = {
 }
 
 _model = None
-BLUR_THRESHOLD = 100  # Laplacian variance below this → frame is too blurry for inference
+BLUR_THRESHOLD = 30  # Laplacian variance below this → frame is too blurry for inference
 
 
 def _apply_clahe(img_bgr):

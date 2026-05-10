@@ -1,4 +1,4 @@
-from fastapi import APIRouter, UploadFile, File, Form, Depends
+from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional, List
 from app.database import get_db
@@ -9,6 +9,9 @@ from app.tasks import process_video_task
 from app.celery_app import celery_app
 from celery.result import AsyncResult
 from pydantic import BaseModel
+
+MAX_IMAGE_BYTES = 20 * 1024 * 1024   # 20 MB
+MAX_VIDEO_BYTES = 300 * 1024 * 1024  # 300 MB
 
 router = APIRouter(dependencies=[Depends(get_current_user)])
 detection_service = DetectionService()
@@ -27,6 +30,8 @@ async def detect_from_image(
     address: Optional[str] = Form(None),
     db: AsyncSession = Depends(get_db),
 ):
+    if file.size and file.size > MAX_IMAGE_BYTES:
+        raise HTTPException(status_code=413, detail="Файл слишком большой. Максимум 20 МБ")
     defects, annotated_url = await detection_service.process_image(file, lat, lng, address, db)
     return {"defects": defects, "annotated_url": annotated_url}
 
@@ -38,6 +43,8 @@ async def detect_from_video(
     lng: Optional[float] = Form(None),
     address: Optional[str] = Form(None),
 ):
+    if file.size and file.size > MAX_VIDEO_BYTES:
+        raise HTTPException(status_code=413, detail="Файл слишком большой. Максимум 300 МБ")
     filepath = await detection_service._save_file(file)
     task = process_video_task.delay(filepath, lat, lng, address)
     return {"task_id": task.id, "status": "processing"}

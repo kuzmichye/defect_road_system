@@ -16,7 +16,7 @@ _SyncSession = sessionmaker(_sync_engine)
 def process_video_task(filepath: str, lat, lng, address):
     if lat and lng and not address:
         address = _reverse_geocode(lat, lng)
-    raw, frame_urls = _infer_video(filepath)
+    raw, annotated_video_url = _infer_video(filepath)
     with _SyncSession() as db:
         for det in raw:
             db.add(Defect(
@@ -34,5 +34,9 @@ def process_video_task(filepath: str, lat, lng, address):
     return {
         "count": count,
         "message": f"Видео обработано, обнаружено дефектов: {count}",
-        "frame_urls": frame_urls,
+        "annotated_video_url": annotated_video_url,
+        "defects": [
+            {"defect_type": d["defect_type"], "confidence": d["confidence"]}
+            for d in raw
+        ],
     }

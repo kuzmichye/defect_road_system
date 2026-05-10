@@ -105,45 +105,76 @@ def _infer_image(filepath: str) -> tuple[list[dict], str | None]:
     return detections, annotated_url
 
 
-def _infer_video(filepath: str) -> tuple[list[dict], list[str]]:
+def _infer_video(filepath: str) -> tuple[list[dict], str | None]:
     model = _load_model()
     cap = cv2.VideoCapture(filepath)
-    frame_idx = 0
+    if not cap.isOpened():
+        return [], None
+
+    fps = cap.get(cv2.CAP_PROP_FPS) or 25
+    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    max_frames = int(fps * 60)  # cap at 60 seconds
+
+    os.makedirs(settings.upload_dir, exist_ok=True)
+    out_filename = f"vid_{uuid.uuid4().hex[:8]}.mp4"
+    out_path = os.path.join(settings.upload_dir, out_filename)
+    writer = cv2.VideoWriter(out_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, (width, height))
+
+    best_by_track: dict[int, dict] = {}
     best_by_class: dict[str, dict] = {}
-    while cap.isOpened():
+    frame_idx = 0
+
+    while cap.isOpened() and frame_idx < max_frames:
         ret, frame = cap.read()
         if not ret:
             break
-        if frame_idx % 10 == 0:
-            results = model.track(frame, imgsz=896, conf=0.25, iou=0.45, verbose=False, tracker="bytetrack.yaml", persist=True)
-            for r in results:
-                for box in r.boxes:
-                    cls = model.names[int(box.cls)]
-                    if cls == "manhole covers":
-                        continue
-                    conf = round(float(box.conf), 2)
-                    if best_by_class.get(cls, {}).get("conf", 0) < conf:
-                        r.names = {i: RUSSIAN_NAMES.get(n, n) for i, n in model.names.items()}
-                        r.boxes.id = None
-                        best_by_class[cls] = {
-                            "conf": conf,
-                            "frame": r.plot(),
-                            "crop_bytes": _crop_bytes(frame, box),
-                        }
-        frame_idx += 1
-    cap.release()
 
-    detections = []
-    frame_urls = []
-    for cls, data in best_by_class.items():
-        detections.append({
+        results = model.track(
+            frame, imgsz=640, conf=0.25, iou=0.45,
+            verbose=False, tracker="bytetrack.yaml", persist=True,
+        )
+        for r in results:
+            r.names = {i: RUSSIAN_NAMES.get(n, n) for i, n in model.names.items()}
+            writer.write(r.plot())
+            for box in r.boxes:
+                cls = model.names[int(box.cls)]
+                if cls == "manhole covers":
+                    continue
+                conf = round(float(box.conf), 2)
+                crop = _crop_bytes(frame, box)
+                track_id = int(box.id.item()) if box.id is not None else None
+                if track_id is not None:
+                    if best_by_track.get(track_id, {}).get("conf", 0) < conf:
+                        best_by_track[track_id] = {"cls": cls, "conf": conf, "crop_bytes": crop}
+                else:
+                    if best_by_class.get(cls, {}).get("conf", 0) < conf:
+                        best_by_class[cls] = {"conf": conf, "crop_bytes": crop}
+        frame_idx += 1
+
+    cap.release()
+    writer.release()
+
+    # Collapse tracks → best per class
+    final: dict[str, dict] = {}
+    for td in best_by_track.values():
+        cls = td["cls"]
+        if final.get(cls, {}).get("conf", 0) < td["conf"]:
+            final[cls] = td
+    for cls, d in best_by_class.items():
+        if cls not in final:
+            final[cls] = d
+
+    detections = [
+        {
             "defect_type": cls,
             "severity": SEVERITY_MAP.get(cls, "medium"),
-            "confidence": data["conf"],
-            "crop_bytes": data.get("crop_bytes"),
-        })
-        frame_urls.append(_save_annotated(data["frame"], f"frame_{cls.replace(' ', '_')}"))
-    return detections, frame_urls
+            "confidence": d["conf"],
+            "crop_bytes": d.get("crop_bytes"),
+        }
+        for cls, d in final.items()
+    ]
+    return detections, f"/uploads/{out_filename}"
 
 
 class DetectionService:

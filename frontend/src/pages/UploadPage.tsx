@@ -27,7 +27,7 @@ interface SectionState {
   results: any[] | null
   annotatedUrl: string | null
   videoResult: { message: string; count: number } | null
-  frameUrls: string[]
+  annotatedVideoUrl: string | null
   dragOver: boolean
   savedAt: number | null
   lat: number | null
@@ -47,7 +47,7 @@ const emptyState = (): SectionState => ({
   results: null,
   annotatedUrl: null,
   videoResult: null,
-  frameUrls: [],
+  annotatedVideoUrl: null,
   dragOver: false,
   savedAt: null,
   lat: null,
@@ -79,7 +79,7 @@ function persistResult(type: Tab, patch: Partial<SectionState>, base: SectionSta
     results: patch.results ?? base.results,
     annotatedUrl: patch.annotatedUrl ?? base.annotatedUrl,
     videoResult: patch.videoResult ?? base.videoResult,
-    frameUrls: patch.frameUrls ?? base.frameUrls,
+    annotatedVideoUrl: patch.annotatedVideoUrl ?? base.annotatedVideoUrl,
     savedAt: patch.savedAt ?? Date.now(),
   }
   localStorage.setItem(STORAGE_KEY[type], JSON.stringify(data))
@@ -209,7 +209,7 @@ function UploadSection({
 }) {
   const inputRef = useRef<HTMLInputElement>(null)
   const accept = type === 'photo' ? 'image/*' : 'video/*'
-  const hasResult = state.results !== null || state.videoResult !== null
+  const hasResult = state.results !== null || state.videoResult !== null || state.annotatedVideoUrl !== null
   const locationReady = state.lat != null && state.lng != null
 
   const handleFileSelect = async (f: File) => {
@@ -223,7 +223,7 @@ function UploadSection({
       results: null,
       annotatedUrl: null,
       videoResult: null,
-      frameUrls: [],
+      annotatedVideoUrl: null,
       error: null,
       geoChecked: false,
       hasGeoTag: false,
@@ -313,23 +313,27 @@ function UploadSection({
           </div>
         )}
 
-        {state.frameUrls.length > 0 && (
+        {state.annotatedVideoUrl && (
           <div>
-            <p className="text-sm font-semibold text-slate-700 mb-2">Кадры с дефектами:</p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {state.frameUrls.map((url, i) => (
-                <img key={i} src={url} alt={`Дефект ${i + 1}`} className="w-full rounded-xl border border-slate-200 shadow-sm" />
-              ))}
-            </div>
+            <p className="text-sm font-semibold text-slate-700 mb-2 flex items-center gap-1.5">
+              <CheckCircle size={15} className="text-green-600" />
+              Аннотированное видео
+            </p>
+            <video
+              src={state.annotatedVideoUrl}
+              controls
+              className="w-full rounded-xl border border-slate-200 shadow-sm"
+              style={{ maxHeight: 360 }}
+            />
           </div>
         )}
 
-        {state.results && state.results.length > 0 && (
+        {(state.results ?? []).length > 0 && (
           <div className="space-y-2">
             <p className="text-sm font-semibold text-slate-700">
-              Обнаружено дефектов: {state.results.length}
+              Обнаружено дефектов: {state.results!.length}
             </p>
-            {state.results.map((r, i) => (
+            {state.results!.map((r, i) => (
               <div key={i} className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm">
                 <span className="font-medium text-slate-700">
                   {TYPE_LABELS[r.defect_type] || r.defect_type}
@@ -538,7 +542,7 @@ export function UploadPage() {
     const patch = type === 'photo' ? patchPhoto : patchVideo
     if (!state.file || state.lat == null || state.lng == null) return
 
-    patch({ loading: true, error: null, results: null, annotatedUrl: null, videoResult: null, frameUrls: [], loadingStartTime: Date.now(), savedAt: null })
+    patch({ loading: true, error: null, results: null, annotatedUrl: null, videoResult: null, annotatedVideoUrl: null, loadingStartTime: Date.now(), savedAt: null })
 
     const fd = new FormData()
     fd.append('file', state.file)
@@ -555,7 +559,8 @@ export function UploadPage() {
             const savedAt = Date.now()
             const result: Partial<SectionState> = {
               videoResult: { message: status.message, count: status.count },
-              frameUrls: status.frame_urls || [],
+              annotatedVideoUrl: status.annotated_video_url ?? null,
+              results: status.defects ?? [],
               loading: false,
               savedAt,
             }

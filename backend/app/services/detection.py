@@ -175,7 +175,6 @@ class DetectionService:
                 lat=lat,
                 lng=lng,
                 address=address,
-                photo_path=filepath,
                 source_type="image",
                 crop_image=det.get("crop_bytes"),
             )

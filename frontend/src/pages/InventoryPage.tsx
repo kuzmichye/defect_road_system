@@ -137,11 +137,14 @@ export function InventoryPage() {
           <table className="w-full text-xs sm:text-sm">
             <thead className="bg-slate-50 border-b border-slate-100">
               <tr>
-                {['ID', 'Тип', 'Коорд.', 'Адрес', 'Фото', 'Дата', 'Ист.', ''].map((h) => (
-                  <th key={h} className="text-left px-2 sm:px-4 py-2 text-slate-500 font-medium whitespace-nowrap">
-                    {h}
-                  </th>
-                ))}
+                <th className="text-left px-2 sm:px-4 py-2 text-slate-500 font-medium whitespace-nowrap">ID</th>
+                <th className="text-left px-2 sm:px-4 py-2 text-slate-500 font-medium whitespace-nowrap">Тип</th>
+                <th className="hidden sm:table-cell text-left px-2 sm:px-4 py-2 text-slate-500 font-medium whitespace-nowrap">Коорд.</th>
+                <th className="text-left px-2 sm:px-4 py-2 text-slate-500 font-medium whitespace-nowrap">Адрес</th>
+                <th className="text-left px-2 sm:px-4 py-2 text-slate-500 font-medium whitespace-nowrap">Фото</th>
+                <th className="text-left px-2 sm:px-4 py-2 text-slate-500 font-medium whitespace-nowrap">Дата</th>
+                <th className="hidden sm:table-cell text-left px-2 sm:px-4 py-2 text-slate-500 font-medium whitespace-nowrap">Ист.</th>
+                <th className="px-2 sm:px-4 py-2"></th>
               </tr>
             </thead>
             <tbody>
@@ -167,7 +170,7 @@ export function InventoryPage() {
                       </span>
                     </div>
                   </td>
-                  <td className="px-2 sm:px-4 py-2 text-slate-400 font-mono text-xs whitespace-nowrap">
+                  <td className="hidden sm:table-cell px-2 sm:px-4 py-2 text-slate-400 font-mono text-xs whitespace-nowrap">
                     {d.lat != null && d.lng != null
                       ? <span className="flex items-center gap-1"><MapPin size={11} className="text-slate-300" />{d.lat.toFixed(3)}, {d.lng.toFixed(3)}</span>
                       : '—'}
@@ -181,7 +184,7 @@ export function InventoryPage() {
                   <td className="px-2 sm:px-4 py-2 text-slate-500 whitespace-nowrap">
                     {new Date(d.detected_at).toLocaleDateString('ru')}
                   </td>
-                  <td className="px-2 sm:px-4 py-2">
+                  <td className="hidden sm:table-cell px-2 sm:px-4 py-2">
                     <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
                       d.source_type === 'video'
                         ? 'bg-violet-50 text-violet-600'
@@ -202,7 +205,7 @@ export function InventoryPage() {
               ))}
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="px-4 py-10 text-center text-slate-400 text-sm">
+                  <td colSpan={6} className="px-4 py-10 text-center text-slate-400 text-sm">
                     Дефекты не найдены
                   </td>
                 </tr>

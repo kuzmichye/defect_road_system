@@ -21,7 +21,6 @@ export interface Defect {
   lat: number | null
   lng: number | null
   address: string | null
-  photo_path: string | null
   source_type: 'image' | 'video'
   description: string | null
   detected_at: string

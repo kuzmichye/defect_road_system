@@ -13,7 +13,6 @@ class Defect(Base):
     lat = Column(Float, nullable=True)
     lng = Column(Float, nullable=True)
     address = Column(String, nullable=True)
-    photo_path = Column(String, nullable=True)
     source_type = Column(String, default="image")
     description = Column(Text, nullable=True)
     detected_at = Column(DateTime(timezone=True), server_default=func.now())

@@ -1,8 +1,9 @@
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { MapContainer, TileLayer, Marker, Popup, useMapEvents, useMap } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
 import L from 'leaflet'
 import type { Defect } from '../../types'
+import { api } from '../../api/client'
 
 export const TYPE_COLORS: Record<string, string> = {
   'potholes':                  '#ef4444',
@@ -63,6 +64,71 @@ const selectedIcon = L.divIcon({
 function MapClickHandler({ onMapClick }: { onMapClick: (lat: number, lng: number) => void }) {
   useMapEvents({ click: (e) => onMapClick(e.latlng.lat, e.latlng.lng) })
   return null
+}
+
+function DefectPopup({ defect }: { defect: Defect }) {
+  const [cropSrc, setCropSrc] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!defect.has_crop) return
+    let objUrl: string
+    api.get(`/inventory/defects/${defect.id}/crop`, { responseType: 'blob' })
+      .then((r) => { objUrl = URL.createObjectURL(r.data); setCropSrc(objUrl) })
+      .catch(() => {})
+    return () => { if (objUrl) URL.revokeObjectURL(objUrl) }
+  }, [defect.id])
+
+  const dateStr = new Date(defect.detected_at).toLocaleString('ru', {
+    day: '2-digit', month: '2-digit', year: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+  })
+
+  return (
+    <div style={{ width: 230, fontFamily: 'inherit' }}>
+      <div style={{ height: 140, background: '#f1f5f9', overflow: 'hidden', flexShrink: 0 }}>
+        {cropSrc ? (
+          <img src={cropSrc} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+        ) : defect.has_crop ? (
+          <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', fontSize: 12 }}>
+            Загрузка...
+          </div>
+        ) : (
+          <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#cbd5e1', fontSize: 12 }}>
+            Нет фото
+          </div>
+        )}
+      </div>
+
+      <div style={{ padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+          <span style={{ width: 9, height: 9, borderRadius: '50%', background: TYPE_COLORS[defect.defect_type] || '#6b7280', flexShrink: 0 }} />
+          <span style={{ fontWeight: 700, fontSize: 14, color: '#0f172a', lineHeight: 1.2 }}>
+            {TYPE_LABELS[defect.defect_type] || defect.defect_type}
+          </span>
+        </div>
+
+        <div>
+          <div style={{ fontSize: 10, color: '#94a3b8', marginBottom: 2, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Дата обнаружения</div>
+          <div style={{ fontSize: 12.5, color: '#334155', fontWeight: 500 }}>{dateStr}</div>
+        </div>
+
+        {defect.lat != null && defect.lng != null && (
+          <div>
+            <div style={{ fontSize: 10, color: '#94a3b8', marginBottom: 2, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Место на карте</div>
+            <div style={{ fontSize: 12, color: '#334155', fontWeight: 500, fontFamily: 'monospace' }}>
+              {defect.lat.toFixed(6)}, {defect.lng.toFixed(6)}
+            </div>
+          </div>
+        )}
+
+        {defect.address && (
+          <div style={{ fontSize: 11.5, color: '#64748b', borderTop: '1px solid #f1f5f9', paddingTop: 8 }}>
+            {defect.address}
+          </div>
+        )}
+      </div>
+    </div>
+  )
 }
 
 function jitterPositions(defects: Defect[]): Map<number, [number, number]> {
@@ -132,14 +198,7 @@ export function DefectMap({ defects = [], onMapClick, selectedCoords, focusLocat
             icon={createDefectIcon(defect.defect_type)}
           >
             <Popup>
-              <div style={{ minWidth: 160 }}>
-                <p style={{ fontWeight: 600, marginBottom: 4 }}>
-                  {TYPE_LABELS[defect.defect_type] || defect.defect_type}
-                </p>
-                {defect.address && (
-                  <p style={{ color: '#9ca3af', fontSize: '0.8rem', marginTop: 4 }}>{defect.address}</p>
-                )}
-              </div>
+              <DefectPopup defect={defect} />
             </Popup>
           </Marker>
         ))}

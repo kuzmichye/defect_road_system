@@ -29,7 +29,6 @@ class DefectUpdate(BaseModel):
 
 class DefectOut(DefectBase):
     id: int
-    photo_path: Optional[str] = None
     detected_at: datetime
     has_crop: bool = False
 

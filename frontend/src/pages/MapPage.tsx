@@ -34,7 +34,7 @@ export function MapPage() {
       {/* Toolbar */}
       <div className="bg-white border-b border-slate-200 px-3 sm:px-5 py-2.5 flex-shrink-0">
         <div className="flex items-center gap-3">
-          <h1 className="text-sm font-bold text-slate-800 flex-shrink-0">Карта дефектов</h1>
+          <h1 className="hidden sm:block text-sm font-bold text-slate-800 flex-shrink-0">Карта дефектов</h1>
           <span className="text-slate-400 text-xs flex-shrink-0">{filtered.length} маркеров</span>
 
           {/* Chip filter — scrollable */}

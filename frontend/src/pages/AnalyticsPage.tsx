@@ -119,7 +119,7 @@ export function AnalyticsPage() {
 
       {/* Chart */}
       <div className="bg-white rounded-xl p-5 border border-slate-100 shadow-sm">
-        <div className="flex items-center justify-between mb-1">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-1">
           <h3 className="font-semibold text-slate-700">Динамика и прогноз</h3>
           <div className="flex items-center gap-4 text-xs text-slate-400">
             <span className="flex items-center gap-1.5">
@@ -178,7 +178,7 @@ export function AnalyticsPage() {
                   className="w-2.5 h-2.5 rounded-full flex-shrink-0"
                   style={{ background: TYPE_COLORS[t.type] || '#6b7280' }}
                 />
-                <span className="text-sm text-slate-600 w-40 flex-shrink-0">
+                <span className="text-sm text-slate-600 w-28 sm:w-40 flex-shrink-0">
                   {TYPE_LABELS[t.type] || t.type}
                 </span>
                 <div className="flex-1 bg-slate-100 rounded-full h-2 overflow-hidden">

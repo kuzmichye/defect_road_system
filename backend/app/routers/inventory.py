@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from typing import Optional, List
@@ -47,6 +47,15 @@ async def update_defect(defect_id: int, update: DefectUpdate, db: AsyncSession =
     await db.commit()
     await db.refresh(defect)
     return defect
+
+
+@router.get("/defects/{defect_id}/crop")
+async def get_defect_crop(defect_id: int, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Defect.crop_image).where(Defect.id == defect_id))
+    crop = result.scalar_one_or_none()
+    if not crop:
+        raise HTTPException(status_code=404, detail="No crop image")
+    return Response(content=crop, media_type="image/jpeg")
 
 
 @router.delete("/defects/{defect_id}")

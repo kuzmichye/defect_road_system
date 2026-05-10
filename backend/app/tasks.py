@@ -27,6 +27,7 @@ def process_video_task(filepath: str, lat, lng, address):
                 lng=lng,
                 address=address,
                 source_type="video",
+                crop_image=det.get("crop_bytes"),
             ))
         db.commit()
     count = len(raw)

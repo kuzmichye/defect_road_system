@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, Text
+from sqlalchemy import Column, Integer, String, Float, DateTime, Text, LargeBinary
 from sqlalchemy.sql import func
 from app.database import Base
 
@@ -18,3 +18,8 @@ class Defect(Base):
     description = Column(Text, nullable=True)
     detected_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    crop_image = Column(LargeBinary, nullable=True)
+
+    @property
+    def has_crop(self) -> bool:
+        return self.crop_image is not None

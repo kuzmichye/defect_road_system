@@ -25,6 +25,7 @@ export interface Defect {
   source_type: 'image' | 'video'
   description: string | null
   detected_at: string
+  has_crop: boolean
 }
 
 export interface Stats {

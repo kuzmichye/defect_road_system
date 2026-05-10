@@ -4,15 +4,15 @@ import { useDefectStore } from '../store/defectStore'
 import { DefectMap, TYPE_COLORS } from '../components/Map/DefectMap'
 
 const TYPES = [
-  { key: 'potholes',                  label: 'Выбоины'          },
-  { key: 'alligator cracks',          label: 'Сетка трещин'     },
-  { key: 'longitudnal_cracks',        label: 'Прод. трещины'    },
-  { key: 'transverse cracks',         label: 'Поп. трещины'     },
-  { key: 'rutting',                   label: 'Колейность'       },
-  { key: 'patchy road sections',      label: 'Рем. карты'       },
-  { key: 'lane line blurs',           label: 'Потёртость'       },
-  { key: 'pedestrian crossing blurs', label: 'Пеш. переход'     },
-  { key: 'repaired cracks',           label: 'Заделанные'       },
+  { key: 'potholes',                  label: 'Выбоины'                   },
+  { key: 'alligator cracks',          label: 'Сетка трещин'              },
+  { key: 'longitudnal_cracks',        label: 'Продольные трещины'        },
+  { key: 'transverse cracks',         label: 'Поперечные трещины'        },
+  { key: 'rutting',                   label: 'Колейность'                },
+  { key: 'patchy road sections',      label: 'Ремонтные карты'           },
+  { key: 'lane line blurs',           label: 'Потёртость разметки'       },
+  { key: 'pedestrian crossing blurs', label: 'Потёртость пеш. перехода'  },
+  { key: 'repaired cracks',           label: 'Заделанные трещины'        },
 ]
 
 export function MapPage() {

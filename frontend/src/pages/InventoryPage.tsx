@@ -4,6 +4,20 @@ import { useNavigate } from 'react-router-dom'
 import * as XLSX from 'xlsx'
 import { useDefectStore } from '../store/defectStore'
 import { TYPE_COLORS } from '../components/Map/DefectMap'
+import { api } from '../api/client'
+
+function CropThumb({ id }: { id: number }) {
+  const [src, setSrc] = useState<string | null>(null)
+  useEffect(() => {
+    let objUrl: string
+    api.get(`/inventory/defects/${id}/crop`, { responseType: 'blob' })
+      .then((r) => { objUrl = URL.createObjectURL(r.data); setSrc(objUrl) })
+      .catch(() => {})
+    return () => { if (objUrl) URL.revokeObjectURL(objUrl) }
+  }, [id])
+  if (!src) return <span className="text-slate-300 text-xs">—</span>
+  return <img src={src} alt="crop" className="h-10 w-16 object-cover rounded border border-slate-100" />
+}
 
 const TYPE_LABELS: Record<string, string> = {
   'potholes':                  'Выбоины',
@@ -66,9 +80,10 @@ export function InventoryPage() {
       'Тип дефекта': TYPE_LABELS[d.defect_type] || d.defect_type,
       'Широта': d.lat ?? '',
       'Долгота': d.lng ?? '',
-      'Адрес': d.address ?? '',
+      'Адрес': d.address || geoAddresses[d.id] || '',
       'Дата': new Date(d.detected_at).toLocaleDateString('ru'),
       'Источник': d.source_type === 'video' ? 'Видео' : 'Фото',
+      'Фото дефекта': d.has_crop ? 'Есть' : 'Нет',
     }))
     const ws = XLSX.utils.json_to_sheet(rows)
     const wb = XLSX.utils.book_new()
@@ -122,7 +137,7 @@ export function InventoryPage() {
           <table className="w-full text-xs sm:text-sm">
             <thead className="bg-slate-50 border-b border-slate-100">
               <tr>
-                {['ID', 'Тип', 'Коорд.', 'Адрес', 'Дата', 'Ист.', ''].map((h) => (
+                {['ID', 'Тип', 'Коорд.', 'Адрес', 'Фото', 'Дата', 'Ист.', ''].map((h) => (
                   <th key={h} className="text-left px-2 sm:px-4 py-2 text-slate-500 font-medium whitespace-nowrap">
                     {h}
                   </th>
@@ -160,6 +175,9 @@ export function InventoryPage() {
                   <td className="px-2 sm:px-4 py-2 text-slate-600 text-xs max-w-[220px] truncate">
                     {d.address || geoAddresses[d.id] || (d.lat != null ? <span className="text-slate-300">...</span> : '—')}
                   </td>
+                  <td className="px-2 sm:px-4 py-2">
+                    {d.has_crop ? <CropThumb id={d.id} /> : <span className="text-slate-300 text-xs">—</span>}
+                  </td>
                   <td className="px-2 sm:px-4 py-2 text-slate-500 whitespace-nowrap">
                     {new Date(d.detected_at).toLocaleDateString('ru')}
                   </td>
@@ -184,7 +202,7 @@ export function InventoryPage() {
               ))}
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-4 py-10 text-center text-slate-400 text-sm">
+                  <td colSpan={8} className="px-4 py-10 text-center text-slate-400 text-sm">
                     Дефекты не найдены
                   </td>
                 </tr>

@@ -71,8 +71,21 @@ def _save_annotated(img_bgr, prefix: str) -> str:
     return f"/uploads/{filename}"
 
 
+def _crop_bytes(img_bgr, box) -> bytes | None:
+    x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
+    h, w = img_bgr.shape[:2]
+    x1, y1 = max(0, x1), max(0, y1)
+    x2, y2 = min(w, x2), min(h, y2)
+    crop = img_bgr[y1:y2, x1:x2]
+    if crop.size == 0:
+        return None
+    _, buf = cv2.imencode(".jpg", crop, [cv2.IMWRITE_JPEG_QUALITY, 85])
+    return buf.tobytes()
+
+
 def _infer_image(filepath: str) -> tuple[list[dict], str | None]:
     model = _load_model()
+    img_bgr = cv2.imread(filepath)
     results = model.predict(filepath, imgsz=896, conf=0.25, iou=0.45, verbose=False)
     detections = []
     annotated_url = None
@@ -87,6 +100,7 @@ def _infer_image(filepath: str) -> tuple[list[dict], str | None]:
                 "defect_type": class_name,
                 "severity": SEVERITY_MAP.get(class_name, "medium"),
                 "confidence": round(float(box.conf), 2),
+                "crop_bytes": _crop_bytes(img_bgr, box) if img_bgr is not None else None,
             })
     return detections, annotated_url
 
@@ -111,7 +125,11 @@ def _infer_video(filepath: str) -> tuple[list[dict], list[str]]:
                     if best_by_class.get(cls, {}).get("conf", 0) < conf:
                         r.names = {i: RUSSIAN_NAMES.get(n, n) for i, n in model.names.items()}
                         r.boxes.id = None
-                        best_by_class[cls] = {"conf": conf, "frame": r.plot()}
+                        best_by_class[cls] = {
+                            "conf": conf,
+                            "frame": r.plot(),
+                            "crop_bytes": _crop_bytes(frame, box),
+                        }
         frame_idx += 1
     cap.release()
 
@@ -122,6 +140,7 @@ def _infer_video(filepath: str) -> tuple[list[dict], list[str]]:
             "defect_type": cls,
             "severity": SEVERITY_MAP.get(cls, "medium"),
             "confidence": data["conf"],
+            "crop_bytes": data.get("crop_bytes"),
         })
         frame_urls.append(_save_annotated(data["frame"], f"frame_{cls.replace(' ', '_')}"))
     return detections, frame_urls
@@ -158,6 +177,7 @@ class DetectionService:
                 address=address,
                 photo_path=filepath,
                 source_type="image",
+                crop_image=det.get("crop_bytes"),
             )
             db.add(defect)
             detections.append(defect)

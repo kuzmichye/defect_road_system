@@ -20,9 +20,39 @@ const TYPE_LABELS: Record<string, string> = {
 export function InventoryPage() {
   const { defects, fetchDefects, deleteDefect } = useDefectStore()
   const [filterType, setFilterType] = useState('')
+  const [geoAddresses, setGeoAddresses] = useState<Record<number, string>>({})
   const navigate = useNavigate()
 
   useEffect(() => { fetchDefects() }, [])
+
+  useEffect(() => {
+    const toFetch = defects.filter(
+      (d) => !d.address && d.lat != null && d.lng != null && !(d.id in geoAddresses),
+    )
+    if (toFetch.length === 0) return
+
+    let cancelled = false
+    ;(async () => {
+      for (const d of toFetch) {
+        if (cancelled) break
+        try {
+          const res = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?lat=${d.lat}&lon=${d.lng}&format=json&accept-language=ru`,
+          )
+          const data = await res.json()
+          if (!cancelled) {
+            const road = data.address?.road || data.address?.pedestrian || ''
+            const city = data.address?.city || data.address?.town || data.address?.village || ''
+            const label = [road, city].filter(Boolean).join(', ') || data.display_name || ''
+            setGeoAddresses((prev) => ({ ...prev, [d.id]: label }))
+          }
+        } catch {}
+        await new Promise((r) => setTimeout(r, 1100))
+      }
+    })()
+
+    return () => { cancelled = true }
+  }, [defects.map((d) => d.id).join(',')])
 
   const filtered = defects.filter((d) => {
     if (d.defect_type === 'manhole covers') return false
@@ -92,7 +122,7 @@ export function InventoryPage() {
           <table className="w-full text-xs sm:text-sm">
             <thead className="bg-slate-50 border-b border-slate-100">
               <tr>
-                {['ID', 'Тип', 'Коорд.', 'Дата', 'Ист.', ''].map((h) => (
+                {['ID', 'Тип', 'Коорд.', 'Адрес', 'Дата', 'Ист.', ''].map((h) => (
                   <th key={h} className="text-left px-2 sm:px-4 py-2 text-slate-500 font-medium whitespace-nowrap">
                     {h}
                   </th>
@@ -127,6 +157,9 @@ export function InventoryPage() {
                       ? <span className="flex items-center gap-1"><MapPin size={11} className="text-slate-300" />{d.lat.toFixed(3)}, {d.lng.toFixed(3)}</span>
                       : '—'}
                   </td>
+                  <td className="px-2 sm:px-4 py-2 text-slate-600 text-xs max-w-[220px] truncate">
+                    {d.address || geoAddresses[d.id] || (d.lat != null ? <span className="text-slate-300">...</span> : '—')}
+                  </td>
                   <td className="px-2 sm:px-4 py-2 text-slate-500 whitespace-nowrap">
                     {new Date(d.detected_at).toLocaleDateString('ru')}
                   </td>
@@ -151,7 +184,7 @@ export function InventoryPage() {
               ))}
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="px-4 py-10 text-center text-slate-400 text-sm">
+                  <td colSpan={7} className="px-4 py-10 text-center text-slate-400 text-sm">
                     Дефекты не найдены
                   </td>
                 </tr>

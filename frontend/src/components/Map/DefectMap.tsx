@@ -1,6 +1,5 @@
-import { useEffect } from 'react'
+import { useEffect, useMemo } from 'react'
 import { MapContainer, TileLayer, Marker, Popup, useMapEvents, useMap } from 'react-leaflet'
-import MarkerClusterGroup from 'react-leaflet-cluster'
 import 'leaflet/dist/leaflet.css'
 import L from 'leaflet'
 import type { Defect } from '../../types'
@@ -66,6 +65,33 @@ function MapClickHandler({ onMapClick }: { onMapClick: (lat: number, lng: number
   return null
 }
 
+function jitterPositions(defects: Defect[]): Map<number, [number, number]> {
+  const result = new Map<number, [number, number]>()
+  const groups = new Map<string, Defect[]>()
+
+  defects.forEach((d) => {
+    if (d.lat == null || d.lng == null) return
+    const key = `${d.lat.toFixed(4)},${d.lng.toFixed(4)}`
+    if (!groups.has(key)) groups.set(key, [])
+    groups.get(key)!.push(d)
+  })
+
+  groups.forEach((group) => {
+    if (group.length === 1) {
+      const d = group[0]
+      result.set(d.id, [d.lat!, d.lng!])
+    } else {
+      group.forEach((d, i) => {
+        const angle = (2 * Math.PI * i) / group.length - Math.PI / 2
+        const r = 0.00018
+        result.set(d.id, [d.lat! + r * Math.cos(angle), d.lng! + r * Math.sin(angle)])
+      })
+    }
+  })
+
+  return result
+}
+
 function MapFlyTo({ location }: { location: { lat: number; lng: number } }) {
   const map = useMap()
   useEffect(() => { map.flyTo([location.lat, location.lng], 17, { duration: 1 }) }, [location.lat, location.lng])
@@ -81,6 +107,11 @@ interface DefectMapProps {
 }
 
 export function DefectMap({ defects = [], onMapClick, selectedCoords, focusLocation, height = '100%' }: DefectMapProps) {
+  const positions = useMemo(
+    () => jitterPositions(defects.filter((d) => d.lat != null && d.lng != null)),
+    [defects],
+  )
+
   return (
     <MapContainer center={[55.7558, 37.6176]} zoom={11} style={{ height, width: '100%' }}>
       <TileLayer
@@ -92,28 +123,26 @@ export function DefectMap({ defects = [], onMapClick, selectedCoords, focusLocat
       {selectedCoords && (
         <Marker position={[selectedCoords.lat, selectedCoords.lng]} icon={selectedIcon} />
       )}
-      <MarkerClusterGroup chunkedLoading>
-        {defects
-          .filter((d) => d.lat != null && d.lng != null)
-          .map((defect) => (
-            <Marker
-              key={defect.id}
-              position={[defect.lat!, defect.lng!]}
-              icon={createDefectIcon(defect.defect_type)}
-            >
-              <Popup>
-                <div style={{ minWidth: 160 }}>
-                  <p style={{ fontWeight: 600, marginBottom: 4 }}>
-                    {TYPE_LABELS[defect.defect_type] || defect.defect_type}
-                  </p>
-                  {defect.address && (
-                    <p style={{ color: '#9ca3af', fontSize: '0.8rem', marginTop: 4 }}>{defect.address}</p>
-                  )}
-                </div>
-              </Popup>
-            </Marker>
-          ))}
-      </MarkerClusterGroup>
+      {defects
+        .filter((d) => d.lat != null && d.lng != null && positions.has(d.id))
+        .map((defect) => (
+          <Marker
+            key={defect.id}
+            position={positions.get(defect.id)!}
+            icon={createDefectIcon(defect.defect_type)}
+          >
+            <Popup>
+              <div style={{ minWidth: 160 }}>
+                <p style={{ fontWeight: 600, marginBottom: 4 }}>
+                  {TYPE_LABELS[defect.defect_type] || defect.defect_type}
+                </p>
+                {defect.address && (
+                  <p style={{ color: '#9ca3af', fontSize: '0.8rem', marginTop: 4 }}>{defect.address}</p>
+                )}
+              </div>
+            </Popup>
+          </Marker>
+        ))}
     </MapContainer>
   )
 }

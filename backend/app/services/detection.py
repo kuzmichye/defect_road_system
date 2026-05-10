@@ -68,6 +68,8 @@ def _infer_image(filepath: str) -> tuple[list[dict], str | None]:
         annotated_url = _save_annotated(r.plot(), "ann")
         for box in r.boxes:
             class_name = model.names[int(box.cls)]
+            if class_name == "manhole covers":
+                continue
             detections.append({
                 "defect_type": class_name,
                 "severity": SEVERITY_MAP.get(class_name, "medium"),
@@ -86,10 +88,12 @@ def _infer_video(filepath: str) -> tuple[list[dict], list[str]]:
         if not ret:
             break
         if frame_idx % 10 == 0:
-            results = model.predict(frame, imgsz=896, conf=0.25, iou=0.45, verbose=False)
+            results = model.track(frame, imgsz=896, conf=0.25, iou=0.45, verbose=False, tracker="bytetrack.yaml", persist=True)
             for r in results:
                 for box in r.boxes:
                     cls = model.names[int(box.cls)]
+                    if cls == "manhole covers":
+                        continue
                     conf = round(float(box.conf), 2)
                     if best_by_class.get(cls, {}).get("conf", 0) < conf:
                         r.names = {i: RUSSIAN_NAMES.get(n, n) for i, n in model.names.items()}

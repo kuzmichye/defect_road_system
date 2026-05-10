@@ -97,7 +97,7 @@ def _infer_image(filepath: str) -> tuple[list[dict], str | None]:
     model = _load_model()
     img_bgr = cv2.imread(filepath)
     infer_src = _apply_clahe(img_bgr) if img_bgr is not None else filepath
-    results = model.predict(infer_src, imgsz=896, conf=0.25, iou=0.45, verbose=False)
+    results = model.predict(infer_src, imgsz=896, conf=0.15, iou=0.45, verbose=False)
     detections = []
     annotated_url = None
     for r in results:

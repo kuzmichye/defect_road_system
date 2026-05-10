@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect } from 'react'
-import { Upload, MapPin, CheckCircle, AlertCircle, Film, Image as ImageIcon, Clock, Database, X } from 'lucide-react'
+import { Upload, MapPin, CheckCircle, AlertCircle, Film, Image as ImageIcon, Clock, Database, X, Search, Loader2 } from 'lucide-react'
 import { defectApi } from '../api/client'
 import { DefectMap } from '../components/Map/DefectMap'
+import exifr from 'exifr'
 
 const TYPE_LABELS: Record<string, string> = {
   'potholes': 'Выбоины',
@@ -16,13 +17,10 @@ const TYPE_LABELS: Record<string, string> = {
   'repaired cracks': 'Заделанные трещины',
 }
 
-
 type Tab = 'photo' | 'video'
 
 interface SectionState {
   file: File | null
-  address: string
-  district: string
   loading: boolean
   loadingStartTime: number | null
   error: string | null
@@ -34,13 +32,15 @@ interface SectionState {
   savedAt: number | null
   lat: number | null
   lng: number | null
-  showMap: boolean
+  geoChecked: boolean
+  hasGeoTag: boolean
+  searchQuery: string
+  searchLocation: { lat: number; lng: number } | null
+  searchLoading: boolean
 }
 
 const emptyState = (): SectionState => ({
   file: null,
-  address: '',
-  district: '',
   loading: false,
   loadingStartTime: null,
   error: null,
@@ -52,7 +52,11 @@ const emptyState = (): SectionState => ({
   savedAt: null,
   lat: null,
   lng: null,
-  showMap: false,
+  geoChecked: false,
+  hasGeoTag: false,
+  searchQuery: '',
+  searchLocation: null,
+  searchLoading: false,
 })
 
 const STORAGE_KEY: Record<Tab, string> = {
@@ -76,8 +80,6 @@ function persistResult(type: Tab, patch: Partial<SectionState>, base: SectionSta
     annotatedUrl: patch.annotatedUrl ?? base.annotatedUrl,
     videoResult: patch.videoResult ?? base.videoResult,
     frameUrls: patch.frameUrls ?? base.frameUrls,
-    address: base.address,
-    district: base.district,
     savedAt: patch.savedAt ?? Date.now(),
   }
   localStorage.setItem(STORAGE_KEY[type], JSON.stringify(data))
@@ -106,9 +108,9 @@ function VideoProgress({ startTime }: { startTime: number }) {
   const seconds = elapsed % 60
 
   const stages = [
-    { label: 'Загрузка видео',           done: elapsed >= 4,  active: elapsed < 4  },
-    { label: 'Анализ кадров',            done: false,         active: elapsed >= 4  },
-    { label: 'Сохранение результатов',   done: false,         active: false         },
+    { label: 'Загрузка видео',         done: elapsed >= 4, active: elapsed < 4 },
+    { label: 'Анализ кадров',          done: false,        active: elapsed >= 4 },
+    { label: 'Сохранение результатов', done: false,        active: false        },
   ]
 
   return (
@@ -121,7 +123,6 @@ function VideoProgress({ startTime }: { startTime: number }) {
         </div>
       </div>
 
-      {/* Progress bar */}
       <div className="space-y-1.5">
         <div className="relative h-2 bg-slate-100 rounded-full overflow-hidden">
           <div
@@ -136,7 +137,6 @@ function VideoProgress({ startTime }: { startTime: number }) {
         </div>
       </div>
 
-      {/* Stages */}
       <div className="space-y-3">
         {stages.map((stage, i) => (
           <div key={i} className="flex items-center gap-2.5">
@@ -152,9 +152,9 @@ function VideoProgress({ startTime }: { startTime: number }) {
               )}
             </div>
             <span className={`text-sm transition-colors ${
-              stage.done    ? 'text-slate-400 line-through' :
-              stage.active  ? 'text-slate-700 font-medium'  :
-                              'text-slate-400'
+              stage.done   ? 'text-slate-400 line-through' :
+              stage.active ? 'text-slate-700 font-medium'  :
+                             'text-slate-400'
             }`}>
               {stage.label}
             </span>
@@ -165,6 +165,33 @@ function VideoProgress({ startTime }: { startTime: number }) {
       <p className="text-xs text-slate-400 text-center">Не закрывайте страницу</p>
     </div>
   )
+}
+
+async function readExifGps(file: File): Promise<{ lat: number; lng: number } | null> {
+  try {
+    const gps = await exifr.gps(file)
+    if (gps?.latitude != null && gps?.longitude != null) {
+      return { lat: gps.latitude, lng: gps.longitude }
+    }
+    return null
+  } catch {
+    return null
+  }
+}
+
+async function searchAddress(query: string): Promise<{ lat: number; lng: number } | null> {
+  try {
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1&accept-language=ru`,
+    )
+    const data = await res.json()
+    if (data.length > 0) {
+      return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) }
+    }
+    return null
+  } catch {
+    return null
+  }
 }
 
 function UploadSection({
@@ -183,31 +210,69 @@ function UploadSection({
   const inputRef = useRef<HTMLInputElement>(null)
   const accept = type === 'photo' ? 'image/*' : 'video/*'
   const hasResult = state.results !== null || state.videoResult !== null
+  const locationReady = state.lat != null && state.lng != null
 
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault()
-    onChange({ dragOver: false })
-    const f = e.dataTransfer.files[0]
-    if (!f) return
+  const handleFileSelect = async (f: File) => {
     const valid = type === 'photo' ? f.type.startsWith('image/') : f.type.startsWith('video/')
     if (!valid) {
       onChange({ error: type === 'photo' ? 'Выберите изображение' : 'Выберите видеофайл' })
       return
     }
-    onChange({ file: f, results: null, annotatedUrl: null, videoResult: null, frameUrls: [], error: null })
+    onChange({
+      file: f,
+      results: null,
+      annotatedUrl: null,
+      videoResult: null,
+      frameUrls: [],
+      error: null,
+      geoChecked: false,
+      hasGeoTag: false,
+      lat: null,
+      lng: null,
+      searchQuery: '',
+      searchLocation: null,
+    })
+
+    if (type === 'photo') {
+      const gps = await readExifGps(f)
+      if (gps) {
+        onChange({ geoChecked: true, hasGeoTag: true, lat: gps.lat, lng: gps.lng })
+      } else {
+        onChange({ geoChecked: true, hasGeoTag: false })
+      }
+    } else {
+      // Video: can't reliably read GPS from browser, require manual selection
+      onChange({ geoChecked: true, hasGeoTag: false })
+    }
+  }
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    onChange({ dragOver: false })
+    const f = e.dataTransfer.files[0]
+    if (f) handleFileSelect(f)
   }
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0]
-    if (f) onChange({ file: f, results: null, annotatedUrl: null, videoResult: null, frameUrls: [], error: null })
+    if (f) handleFileSelect(f)
   }
 
-  // Video processing — show progress bar
+  const handleSearch = async () => {
+    if (!state.searchQuery.trim()) return
+    onChange({ searchLoading: true })
+    const loc = await searchAddress(state.searchQuery)
+    onChange({ searchLoading: false, searchLocation: loc ?? state.searchLocation })
+  }
+
+  const handleSearchKey = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') handleSearch()
+  }
+
   if (state.loading && type === 'video' && state.loadingStartTime) {
     return <VideoProgress startTime={state.loadingStartTime} />
   }
 
-  // Photo processing — show spinner
   if (state.loading && type === 'photo') {
     return (
       <div className="flex flex-col items-center justify-center py-12 gap-3">
@@ -220,7 +285,6 @@ function UploadSection({
   if (hasResult) {
     return (
       <div className="space-y-4">
-        {/* Saved indicator */}
         {state.savedAt != null && (
           <div className="flex items-center gap-1.5 text-xs text-green-600">
             <Database size={11} />
@@ -228,7 +292,6 @@ function UploadSection({
           </div>
         )}
 
-        {/* Annotated image */}
         {state.annotatedUrl && (
           <div>
             <p className="text-sm font-semibold text-slate-700 mb-2 flex items-center gap-1.5">
@@ -243,7 +306,6 @@ function UploadSection({
           </div>
         )}
 
-        {/* Video result message */}
         {state.videoResult && (
           <div className="flex items-center gap-2 text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2.5 text-sm">
             <CheckCircle size={15} />
@@ -251,41 +313,29 @@ function UploadSection({
           </div>
         )}
 
-        {/* Video frames */}
         {state.frameUrls.length > 0 && (
           <div>
             <p className="text-sm font-semibold text-slate-700 mb-2">Кадры с дефектами:</p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {state.frameUrls.map((url, i) => (
-                <img
-                  key={i}
-                  src={url}
-                  alt={`Дефект ${i + 1}`}
-                  className="w-full rounded-xl border border-slate-200 shadow-sm"
-                />
+                <img key={i} src={url} alt={`Дефект ${i + 1}`} className="w-full rounded-xl border border-slate-200 shadow-sm" />
               ))}
             </div>
           </div>
         )}
 
-        {/* Defect list */}
         {state.results && state.results.length > 0 && (
           <div className="space-y-2">
             <p className="text-sm font-semibold text-slate-700">
               Обнаружено дефектов: {state.results.length}
             </p>
             {state.results.map((r, i) => (
-              <div
-                key={i}
-                className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm"
-              >
+              <div key={i} className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm">
                 <span className="font-medium text-slate-700">
                   {TYPE_LABELS[r.defect_type] || r.defect_type}
                 </span>
                 {r.confidence != null && (
-                  <span className="text-slate-400 text-xs">
-                    {(r.confidence * 100).toFixed(0)}%
-                  </span>
+                  <span className="text-slate-400 text-xs">{(r.confidence * 100).toFixed(0)}%</span>
                 )}
               </div>
             ))}
@@ -320,13 +370,7 @@ function UploadSection({
             : 'border-slate-200 hover:border-blue-400 hover:bg-slate-50'
         }`}
       >
-        <input
-          ref={inputRef}
-          type="file"
-          accept={accept}
-          className="hidden"
-          onChange={handleFileChange}
-        />
+        <input ref={inputRef} type="file" accept={accept} className="hidden" onChange={handleFileChange} />
         {state.file ? (
           <div className="space-y-1.5">
             {type === 'video'
@@ -356,78 +400,115 @@ function UploadSection({
         )}
       </div>
 
-      {/* District */}
-      <div>
-        <label className="block text-sm font-medium text-slate-700 mb-1">Район / округ</label>
-        <input
-          type="text"
-          value={state.district}
-          onChange={(e) => onChange({ district: e.target.value })}
-          placeholder="Например: САО, Химки, Одинцово"
-          className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-        />
-      </div>
+      {/* Location section */}
+      {state.file && (
+        <>
+          {/* Checking EXIF */}
+          {!state.geoChecked && type === 'photo' && (
+            <div className="flex items-center gap-2 text-slate-400 text-sm">
+              <Loader2 size={14} className="animate-spin" />
+              Проверка геометки файла...
+            </div>
+          )}
 
-      {/* Address */}
-      <div>
-        <label className="block text-sm font-medium text-slate-700 mb-1 flex items-center gap-1.5">
-          <MapPin size={13} className="text-slate-400" />
-          Адрес / описание места
-        </label>
-        <input
-          type="text"
-          value={state.address}
-          onChange={(e) => onChange({ address: e.target.value })}
-          placeholder="Например: ул. Тверская, 10"
-          className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-        />
-      </div>
+          {/* GPS found automatically */}
+          {state.geoChecked && state.hasGeoTag && (
+            <div className="flex items-center justify-between bg-green-50 border border-green-200 rounded-xl px-4 py-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-7 h-7 bg-green-100 rounded-full flex items-center justify-center flex-shrink-0">
+                  <MapPin size={14} className="text-green-600" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-green-800">Геопозиция из файла</p>
+                  <p className="text-xs text-green-600 font-mono mt-0.5">
+                    {state.lat?.toFixed(6)}, {state.lng?.toFixed(6)}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => onChange({ lat: null, lng: null, hasGeoTag: false })}
+                className="text-slate-400 hover:text-red-500 transition-colors p-1"
+              >
+                <X size={14} />
+              </button>
+            </div>
+          )}
 
-      {/* Map pin selector */}
-      <div>
-        <button
-          type="button"
-          onClick={() => onChange({ showMap: !state.showMap })}
-          className="flex items-center gap-1.5 text-sm text-blue-600 hover:underline"
-        >
-          <MapPin size={13} />
-          {state.lat != null ? 'Изменить место на карте' : 'Указать место на карте (необязательно)'}
-        </button>
-        {state.lat != null && (
-          <div className="flex items-center gap-2 mt-1">
-            <span className="text-xs text-slate-500 tabular-nums">
-              {state.lat.toFixed(5)}, {state.lng!.toFixed(5)}
-            </span>
-            <button
-              type="button"
-              onClick={() => onChange({ lat: null, lng: null })}
-              className="text-slate-400 hover:text-red-500 transition-colors"
-            >
-              <X size={13} />
-            </button>
-          </div>
-        )}
-        {state.showMap && (
-          <div className="mt-2 rounded-xl overflow-hidden border border-slate-200" style={{ height: 220 }}>
-            <DefectMap
-              height="220px"
-              onMapClick={(lat, lng) => onChange({ lat, lng, showMap: false })}
-              selectedCoords={state.lat != null ? { lat: state.lat, lng: state.lng! } : null}
-            />
-          </div>
-        )}
-      </div>
+          {/* No GPS — mandatory map picker */}
+          {state.geoChecked && !state.hasGeoTag && (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+                <AlertCircle size={15} className="text-amber-500 flex-shrink-0" />
+                <p className="text-sm text-amber-800">
+                  Геометка не найдена — укажите место на карте
+                </p>
+              </div>
+
+              {/* Address search */}
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={state.searchQuery}
+                  onChange={(e) => onChange({ searchQuery: e.target.value })}
+                  onKeyDown={handleSearchKey}
+                  placeholder="Поиск адреса..."
+                  className="flex-1 border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <button
+                  type="button"
+                  onClick={handleSearch}
+                  disabled={state.searchLoading}
+                  className="px-3 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white rounded-lg transition-colors flex items-center"
+                >
+                  {state.searchLoading
+                    ? <Loader2 size={15} className="animate-spin" />
+                    : <Search size={15} />
+                  }
+                </button>
+              </div>
+
+              {/* Map */}
+              <div className="rounded-xl overflow-hidden border border-slate-200" style={{ height: 280 }}>
+                <DefectMap
+                  height="280px"
+                  onMapClick={(lat, lng) => onChange({ lat, lng })}
+                  selectedCoords={state.lat != null ? { lat: state.lat, lng: state.lng! } : null}
+                  focusLocation={state.searchLocation}
+                />
+              </div>
+
+              {state.lat != null ? (
+                <div className="flex items-center justify-between bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">
+                  <div className="flex items-center gap-1.5">
+                    <CheckCircle size={13} className="text-blue-600" />
+                    <span className="text-xs text-blue-700 font-mono">{state.lat.toFixed(5)}, {state.lng!.toFixed(5)}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => onChange({ lat: null, lng: null })}
+                    className="text-slate-400 hover:text-red-500 transition-colors"
+                  >
+                    <X size={13} />
+                  </button>
+                </div>
+              ) : (
+                <p className="text-xs text-slate-400 text-center">Нажмите на карту, чтобы отметить место</p>
+              )}
+            </div>
+          )}
+        </>
+      )}
 
       {/* Submit */}
       <button
         onClick={onSubmit}
-        disabled={!state.file || state.loading}
+        disabled={!state.file || state.loading || !locationReady}
         className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-400 text-white font-medium py-2.5 rounded-lg transition-colors text-sm"
       >
         {type === 'video' ? 'Обработать видео' : 'Определить дефекты'}
       </button>
 
-      {/* Error */}
       {state.error && (
         <div className="flex items-center gap-2 text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-sm">
           <AlertCircle size={15} />
@@ -455,16 +536,14 @@ export function UploadPage() {
   const handleSubmit = async (type: Tab) => {
     const state = type === 'photo' ? photo : video
     const patch = type === 'photo' ? patchPhoto : patchVideo
-    if (!state.file) return
+    if (!state.file || state.lat == null || state.lng == null) return
 
     patch({ loading: true, error: null, results: null, annotatedUrl: null, videoResult: null, frameUrls: [], loadingStartTime: Date.now(), savedAt: null })
 
     const fd = new FormData()
     fd.append('file', state.file)
-    const fullAddress = [state.district, state.address].filter(Boolean).join(', ')
-    if (fullAddress) fd.append('address', fullAddress)
-    if (state.lat != null) fd.append('lat', String(state.lat))
-    if (state.lng != null) fd.append('lng', String(state.lng))
+    fd.append('lat', String(state.lat))
+    fd.append('lng', String(state.lng))
 
     if (type === 'video') {
       try {

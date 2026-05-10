@@ -16,19 +16,6 @@ const TYPE_LABELS: Record<string, string> = {
   'repaired cracks': 'Заделанные трещины',
 }
 
-const SEVERITY_BADGE: Record<string, string> = {
-  low: 'bg-green-100 text-green-700',
-  medium: 'bg-yellow-100 text-yellow-700',
-  high: 'bg-orange-100 text-orange-700',
-  critical: 'bg-red-100 text-red-700',
-}
-
-const SEVERITY_LABELS: Record<string, string> = {
-  low: 'Низкая',
-  medium: 'Средняя',
-  high: 'Высокая',
-  critical: 'Критическая',
-}
 
 type Tab = 'photo' | 'video'
 
@@ -295,14 +282,11 @@ function UploadSection({
                 <span className="font-medium text-slate-700">
                   {TYPE_LABELS[r.defect_type] || r.defect_type}
                 </span>
-                <div className="flex items-center gap-2">
+                {r.confidence != null && (
                   <span className="text-slate-400 text-xs">
-                    {r.confidence != null ? `${(r.confidence * 100).toFixed(0)}%` : ''}
+                    {(r.confidence * 100).toFixed(0)}%
                   </span>
-                  <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${SEVERITY_BADGE[r.severity] || 'bg-slate-100 text-slate-600'}`}>
-                    {SEVERITY_LABELS[r.severity] || r.severity}
-                  </span>
-                </div>
+                )}
               </div>
             ))}
           </div>

@@ -3,31 +3,29 @@ import 'leaflet/dist/leaflet.css'
 import L from 'leaflet'
 import type { Defect } from '../../types'
 
-const SEVERITY_COLORS: Record<string, string> = {
-  low: '#22c55e',
-  medium: '#f59e0b',
-  high: '#f97316',
-  critical: '#ef4444',
+export const TYPE_COLORS: Record<string, string> = {
+  'potholes':                  '#ef4444',
+  'alligator cracks':          '#f97316',
+  'longitudnal_cracks':        '#f59e0b',
+  'transverse cracks':         '#eab308',
+  'rutting':                   '#8b5cf6',
+  'patchy road sections':      '#06b6d4',
+  'lane line blurs':           '#10b981',
+  'pedestrian crossing blurs': '#14b8a6',
+  'repaired cracks':           '#94a3b8',
 }
 
 const TYPE_LABELS: Record<string, string> = {
-  'potholes': 'Выбоины',
-  'alligator cracks': 'Сетка трещин',
-  'longitudnal_cracks': 'Продольные трещины',
-  'transverse cracks': 'Поперечные трещины',
-  'rutting': 'Колейность',
-  'patchy road sections': 'Ремонтные карты',
-  'lane line blurs': 'Потёртость разметки',
+  'potholes':                  'Выбоины',
+  'alligator cracks':          'Сетка трещин',
+  'longitudnal_cracks':        'Продольные трещины',
+  'transverse cracks':         'Поперечные трещины',
+  'rutting':                   'Колейность',
+  'patchy road sections':      'Ремонтные карты',
+  'lane line blurs':           'Потёртость разметки',
   'pedestrian crossing blurs': 'Потёртость пеш. перехода',
-  'manhole covers': 'Люки',
-  'repaired cracks': 'Заделанные трещины',
-}
-
-const SEVERITY_LABELS: Record<string, string> = {
-  low: 'Низкая',
-  medium: 'Средняя',
-  high: 'Высокая',
-  critical: 'Критическая',
+  'manhole covers':            'Люки',
+  'repaired cracks':           'Заделанные трещины',
 }
 
 function makePinSvg(color: string, size: number) {
@@ -35,17 +33,15 @@ function makePinSvg(color: string, size: number) {
   const inner = r * 0.38
   const cx = r
   const cy = r
-  const h = size * (28 / 22)
-  // teardrop: circle top + pointed bottom
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${Math.round(h)}" viewBox="0 0 ${size} ${Math.round(h)}">
-    <path d="M${cx} 0C${cx - r} 0 0 ${r} 0 ${cy} 0 ${cy + r * 1.6} ${cx} ${Math.round(h)} ${cx} ${Math.round(h)} ${cx} ${Math.round(h)} ${size} ${cy + r * 1.6} ${size} ${cy} ${size} ${r} ${cx + r} 0 ${cx} 0z" fill="${color}"/>
+  const h = Math.round(size * (28 / 22))
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${h}" viewBox="0 0 ${size} ${h}">
+    <path d="M${cx} 0C${cx - r} 0 0 ${r} 0 ${cy} 0 ${cy + r * 1.6} ${cx} ${h} ${cx} ${h} ${cx} ${h} ${size} ${cy + r * 1.6} ${size} ${cy} ${size} ${r} ${cx + r} 0 ${cx} 0z" fill="${color}"/>
     <circle cx="${cx}" cy="${cy}" r="${inner}" fill="white" opacity="0.92"/>
   </svg>`
 }
 
-function createDefectIcon(severity: string, defectType?: string) {
-  const isRepaired = defectType === 'repaired cracks'
-  const color = isRepaired ? '#94a3b8' : (SEVERITY_COLORS[severity] || '#6b7280')
+function createDefectIcon(defectType: string) {
+  const color = TYPE_COLORS[defectType] || '#6b7280'
   return L.divIcon({
     className: '',
     html: `<div style="filter:drop-shadow(0 2px 3px rgba(0,0,0,0.28))">${makePinSvg(color, 22)}</div>`,
@@ -92,15 +88,12 @@ export function DefectMap({ defects = [], onMapClick, selectedCoords, height = '
           <Marker
             key={defect.id}
             position={[defect.lat!, defect.lng!]}
-            icon={createDefectIcon(defect.severity, defect.defect_type)}
+            icon={createDefectIcon(defect.defect_type)}
           >
             <Popup>
               <div style={{ minWidth: 160 }}>
                 <p style={{ fontWeight: 600, marginBottom: 4 }}>
                   {TYPE_LABELS[defect.defect_type] || defect.defect_type}
-                </p>
-                <p style={{ color: '#6b7280', fontSize: '0.85rem' }}>
-                  Тяжесть: {SEVERITY_LABELS[defect.severity] || defect.severity}
                 </p>
                 {defect.confidence != null && (
                   <p style={{ color: '#6b7280', fontSize: '0.85rem' }}>

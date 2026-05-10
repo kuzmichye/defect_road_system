@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { Trash2, Download, Filter, FileJson } from 'lucide-react'
+import { Trash2, Download, Filter, FileJson, MapPin } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import { useDefectStore } from '../store/defectStore'
 import { defectApi } from '../api/client'
 import { TYPE_COLORS } from '../components/Map/DefectMap'
@@ -19,6 +20,7 @@ const TYPE_LABELS: Record<string, string> = {
 export function InventoryPage() {
   const { defects, fetchDefects, deleteDefect } = useDefectStore()
   const [filterType, setFilterType] = useState('')
+  const navigate = useNavigate()
 
   useEffect(() => { fetchDefects() }, [])
 
@@ -104,7 +106,7 @@ export function InventoryPage() {
           <table className="w-full text-xs sm:text-sm">
             <thead className="bg-slate-50 border-b border-slate-100">
               <tr>
-                {['ID', 'Тип', 'Увер.', 'Коорд.', 'Адрес', 'Дата', 'Ист.', ''].map((h) => (
+                {['ID', 'Тип', 'Коорд.', 'Место', 'Дата', 'Ист.', ''].map((h) => (
                   <th key={h} className="text-left px-2 sm:px-4 py-2 text-slate-500 font-medium whitespace-nowrap">
                     {h}
                   </th>
@@ -113,7 +115,15 @@ export function InventoryPage() {
             </thead>
             <tbody>
               {filtered.map((d) => (
-                <tr key={d.id} className="border-b border-slate-50 hover:bg-slate-50 transition-colors">
+                <tr
+                  key={d.id}
+                  className="border-b border-slate-50 hover:bg-slate-50 transition-colors cursor-pointer"
+                  onClick={() => {
+                    if (d.lat != null && d.lng != null) {
+                      navigate('/map', { state: { focusLocation: { lat: d.lat, lng: d.lng } } })
+                    }
+                  }}
+                >
                   <td className="px-2 sm:px-4 py-2 text-slate-400 text-xs">#{d.id}</td>
                   <td className="px-2 sm:px-4 py-2 whitespace-nowrap">
                     <div className="flex items-center gap-2">
@@ -126,12 +136,9 @@ export function InventoryPage() {
                       </span>
                     </div>
                   </td>
-                  <td className="px-2 sm:px-4 py-2 text-slate-500">
-                    {d.confidence != null ? `${(d.confidence * 100).toFixed(0)}%` : '—'}
-                  </td>
                   <td className="px-2 sm:px-4 py-2 text-slate-400 font-mono text-xs whitespace-nowrap">
                     {d.lat != null && d.lng != null
-                      ? `${d.lat.toFixed(3)}, ${d.lng.toFixed(3)}`
+                      ? <span className="flex items-center gap-1"><MapPin size={11} className="text-slate-300" />{d.lat.toFixed(3)}, {d.lng.toFixed(3)}</span>
                       : '—'}
                   </td>
                   <td className="px-2 sm:px-4 py-2 text-slate-500 max-w-[120px] sm:max-w-xs truncate">
@@ -151,7 +158,7 @@ export function InventoryPage() {
                   </td>
                   <td className="px-2 sm:px-4 py-2">
                     <button
-                      onClick={() => deleteDefect(d.id)}
+                      onClick={(e) => { e.stopPropagation(); deleteDefect(d.id) }}
                       className="text-slate-300 hover:text-red-500 transition-colors"
                     >
                       <Trash2 size={14} />
@@ -161,7 +168,7 @@ export function InventoryPage() {
               ))}
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="px-4 py-10 text-center text-slate-400 text-sm">
+                  <td colSpan={7} className="px-4 py-10 text-center text-slate-400 text-sm">
                     Дефекты не найдены
                   </td>
                 </tr>

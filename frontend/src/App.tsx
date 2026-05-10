@@ -6,6 +6,7 @@ import { DashboardPage } from './pages/DashboardPage'
 import { UploadPage } from './pages/UploadPage'
 import { MapPage } from './pages/MapPage'
 import { InventoryPage } from './pages/InventoryPage'
+import { AnalyticsPage } from './pages/AnalyticsPage'
 import { LoginPage } from './pages/LoginPage'
 import { useAuthStore } from './store/authStore'
 
@@ -33,6 +34,7 @@ function ProtectedLayout() {
           <Route path="/upload" element={<UploadPage />} />
           <Route path="/map" element={<MapPage />} />
           <Route path="/inventory" element={<InventoryPage />} />
+          <Route path="/analytics" element={<AnalyticsPage />} />
         </Routes>
       </main>
     </div>

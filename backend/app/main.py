@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from prometheus_fastapi_instrumentator import Instrumentator
 import os
-from app.routers import detection, inventory, export, auth
+from app.routers import detection, inventory, export, auth, analytics
 
 os.makedirs("uploads", exist_ok=True)
 
@@ -30,6 +30,7 @@ app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(detection.router, prefix="/api/detection", tags=["detection"])
 app.include_router(inventory.router, prefix="/api/inventory", tags=["inventory"])
 app.include_router(export.router, prefix="/api/export", tags=["export"])
+app.include_router(analytics.router, prefix="/api/analytics", tags=["analytics"])
 
 
 @app.get("/")

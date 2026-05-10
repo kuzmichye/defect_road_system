@@ -97,6 +97,7 @@ def _infer_video(filepath: str) -> tuple[list[dict], list[str]]:
                     conf = round(float(box.conf), 2)
                     if best_by_class.get(cls, {}).get("conf", 0) < conf:
                         r.names = {i: RUSSIAN_NAMES.get(n, n) for i, n in model.names.items()}
+                        r.boxes.id = None
                         best_by_class[cls] = {"conf": conf, "frame": r.plot()}
         frame_idx += 1
     cap.release()

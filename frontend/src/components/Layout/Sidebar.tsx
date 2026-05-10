@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom'
-import { LayoutDashboard, Upload, Map, Database, LogOut, X } from 'lucide-react'
+import { LayoutDashboard, Upload, Map, Database, LogOut, X, TrendingUp } from 'lucide-react'
 import { useAuthStore } from '../../store/authStore'
 
 const navItems = [
@@ -7,6 +7,7 @@ const navItems = [
   { to: '/upload', icon: Upload, label: 'Загрузка' },
   { to: '/map', icon: Map, label: 'Карта' },
   { to: '/inventory', icon: Database, label: 'Инвентаризация' },
+  { to: '/analytics', icon: TrendingUp, label: 'Аналитика' },
 ]
 
 interface SidebarProps {
@@ -34,11 +35,12 @@ export function Sidebar({ mobileOpen, onClose }: SidebarProps) {
         ${mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
       `}>
         <div className="p-5 border-b border-slate-700 flex items-start justify-between">
-          <div>
-            <h1 className="text-white font-bold text-sm leading-snug">
-              Дефекты дорожного<br />покрытия
-            </h1>
-            <p className="text-slate-400 text-xs mt-1">Система мониторинга</p>
+          <div className="flex items-center gap-2.5">
+            <span className="text-2xl leading-none">🛣️</span>
+            <div>
+              <h1 className="text-white font-bold text-sm">Дефекты дорог</h1>
+              <p className="text-slate-400 text-xs mt-0.5">Система мониторинга</p>
+            </div>
           </div>
           <button
             onClick={onClose}
@@ -78,7 +80,7 @@ export function Sidebar({ mobileOpen, onClose }: SidebarProps) {
             <LogOut size={14} />
             Выйти
           </button>
-          <p className="text-slate-600 text-xs">ВКР 2025 · НИУ МГСУ</p>
+          <p className="text-slate-600 text-xs">НИУ МГСУ</p>
         </div>
       </aside>
     </>

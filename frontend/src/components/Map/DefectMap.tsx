@@ -1,4 +1,5 @@
-import { MapContainer, TileLayer, Marker, Popup, useMapEvents } from 'react-leaflet'
+import { useEffect } from 'react'
+import { MapContainer, TileLayer, Marker, Popup, useMapEvents, useMap } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
 import L from 'leaflet'
 import type { Defect } from '../../types'
@@ -64,14 +65,21 @@ function MapClickHandler({ onMapClick }: { onMapClick: (lat: number, lng: number
   return null
 }
 
+function MapFlyTo({ location }: { location: { lat: number; lng: number } }) {
+  const map = useMap()
+  useEffect(() => { map.flyTo([location.lat, location.lng], 17, { duration: 1 }) }, [location.lat, location.lng])
+  return null
+}
+
 interface DefectMapProps {
   defects?: Defect[]
   onMapClick?: (lat: number, lng: number) => void
   selectedCoords?: { lat: number; lng: number } | null
+  focusLocation?: { lat: number; lng: number } | null
   height?: string
 }
 
-export function DefectMap({ defects = [], onMapClick, selectedCoords, height = '100%' }: DefectMapProps) {
+export function DefectMap({ defects = [], onMapClick, selectedCoords, focusLocation, height = '100%' }: DefectMapProps) {
   return (
     <MapContainer center={[55.7558, 37.6176]} zoom={11} style={{ height, width: '100%' }}>
       <TileLayer
@@ -79,6 +87,7 @@ export function DefectMap({ defects = [], onMapClick, selectedCoords, height = '
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
       {onMapClick && <MapClickHandler onMapClick={onMapClick} />}
+      {focusLocation && <MapFlyTo location={focusLocation} />}
       {selectedCoords && (
         <Marker position={[selectedCoords.lat, selectedCoords.lng]} icon={selectedIcon} />
       )}
@@ -95,11 +104,6 @@ export function DefectMap({ defects = [], onMapClick, selectedCoords, height = '
                 <p style={{ fontWeight: 600, marginBottom: 4 }}>
                   {TYPE_LABELS[defect.defect_type] || defect.defect_type}
                 </p>
-                {defect.confidence != null && (
-                  <p style={{ color: '#6b7280', fontSize: '0.85rem' }}>
-                    Уверенность: {(defect.confidence * 100).toFixed(0)}%
-                  </p>
-                )}
                 {defect.address && (
                   <p style={{ color: '#9ca3af', fontSize: '0.8rem', marginTop: 4 }}>{defect.address}</p>
                 )}

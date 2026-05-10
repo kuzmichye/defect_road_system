@@ -35,4 +35,6 @@ export const defectApi = {
     api.get('/export/csv', { responseType: 'blob' }).then((r) => r.data),
 
   exportGeoJson: () => api.get('/export/geojson').then((r) => r.data),
+
+  getForecast: () => api.get('/analytics/forecast').then((r) => r.data),
 }

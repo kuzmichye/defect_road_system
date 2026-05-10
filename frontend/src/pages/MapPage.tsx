@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import { useDefectStore } from '../store/defectStore'
 import { DefectMap, TYPE_COLORS } from '../components/Map/DefectMap'
 
@@ -17,6 +18,8 @@ const TYPES = [
 export function MapPage() {
   const { defects, fetchDefects } = useDefectStore()
   const [filterType, setFilterType] = useState('')
+  const location = useLocation()
+  const focusLocation = (location.state as any)?.focusLocation ?? null
 
   useEffect(() => { fetchDefects() }, [])
 
@@ -71,7 +74,7 @@ export function MapPage() {
 
       {/* Map */}
       <div className="flex-1" style={{ isolation: 'isolate' }}>
-        <DefectMap defects={filtered} height="100%" />
+        <DefectMap defects={filtered} height="100%" focusLocation={focusLocation} />
       </div>
     </div>
   )

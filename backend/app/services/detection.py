@@ -174,8 +174,6 @@ def _infer_video(filepath: str) -> tuple[list[dict], str | None]:
     out_path = os.path.join(settings.upload_dir, out_filename)
     writer = cv2.VideoWriter(out_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, (width, height))
 
-    y_offset = int(height * 0.3)  # infer on bottom 70%, skip sky/trees/cars
-
     best_by_track: dict[int, dict] = {}
     best_by_class: dict[str, dict] = {}
     frame_idx = 0
@@ -192,24 +190,26 @@ def _infer_video(filepath: str) -> tuple[list[dict], str | None]:
             frame_idx += 1
             continue
 
-        # Crop bottom 70% + CLAHE before inference
-        crop_frame = frame[y_offset:, :]
-        infer_frame = _apply_clahe(crop_frame)
+        # CLAHE on full frame
+        infer_frame = _apply_clahe(frame)
 
         results = model.track(
             infer_frame, imgsz=640, conf=0.15, iou=0.45,
             verbose=False, tracker="bytetrack.yaml", persist=True,
         )
-        full_annotated = frame.copy()
         for r in results:
             r.names = {i: RUSSIAN_NAMES.get(n, n) for i, n in model.names.items()}
-            full_annotated[y_offset:] = r.plot()
+            # filter manhole covers from video rendering too
+            if r.boxes is not None and len(r.boxes):
+                keep = [i for i, b in enumerate(r.boxes) if model.names[int(b.cls)] != "manhole covers"]
+                r = r[keep]
+            writer.write(r.plot())
             for box in r.boxes:
                 cls = model.names[int(box.cls)]
                 if cls == "manhole covers":
                     continue
                 conf = round(float(box.conf), 2)
-                crop = _crop_bytes(crop_frame, box)
+                crop = _crop_bytes(frame, box)
                 track_id = int(box.id.item()) if box.id is not None else None
                 if track_id is not None:
                     if best_by_track.get(track_id, {}).get("conf", 0) < conf:
@@ -217,7 +217,6 @@ def _infer_video(filepath: str) -> tuple[list[dict], str | None]:
                 else:
                     if best_by_class.get(cls, {}).get("conf", 0) < conf:
                         best_by_class[cls] = {"conf": conf, "crop_bytes": crop}
-        writer.write(full_annotated)
         frame_idx += 1
 
     cap.release()

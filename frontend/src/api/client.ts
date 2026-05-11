@@ -11,6 +11,17 @@ api.interceptors.request.use((config) => {
   return config
 })
 
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      localStorage.removeItem('auth')
+      window.location.href = '/'
+    }
+    return Promise.reject(error)
+  }
+)
+
 export const defectApi = {
   getAll: (params?: { defect_type?: string; severity?: string }) =>
     api.get('/inventory/defects', { params }).then((r) => r.data),

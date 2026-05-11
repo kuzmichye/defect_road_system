@@ -1,15 +1,35 @@
-from fastapi import FastAPI
+from contextlib import asynccontextmanager
+from fastapi import FastAPI, Depends, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
+from fastapi.responses import JSONResponse
 from prometheus_fastapi_instrumentator import Instrumentator
+from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
 import os
 from app.routers import detection, inventory, export, auth, analytics
+from app.services.auth import get_current_user
 
 os.makedirs("uploads", exist_ok=True)
 
-app = FastAPI(title="Road Defect Detection API", version="1.0.0")
 
-Instrumentator().instrument(app).expose(app, endpoint="/metrics")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    import asyncio
+    loop = asyncio.get_event_loop()
+    await loop.run_in_executor(None, _preload_ml)
+    yield
+
+
+def _preload_ml():
+    try:
+        from ml.predictor import preload
+        preload()
+    except Exception:
+        pass  # не блокировать старт если sklearn не установлен
+
+
+app = FastAPI(title="Road Defect Detection API", version="1.0.0", lifespan=lifespan)
+
+Instrumentator().instrument(app)
 
 app.add_middleware(
     CORSMiddleware,
@@ -24,7 +44,27 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
+
+# /metrics — только для авторизованных пользователей (публичный доступ)
+@app.get("/metrics", include_in_schema=False)
+async def metrics(_user=Depends(get_current_user)):
+    return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
+
+
+# /internal/metrics — для Prometheus внутри Docker-сети (без токена, не экспонируется наружу)
+@app.get("/internal/metrics", include_in_schema=False)
+async def metrics_internal():
+    return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
+
+
+# /uploads защищён авторизацией — отдаём файл только после проверки токена
+@app.get("/uploads/{filename:path}", include_in_schema=False)
+async def serve_upload(filename: str, request: Request, _user=Depends(get_current_user)):
+    from fastapi.responses import FileResponse
+    path = os.path.join("uploads", filename)
+    if not os.path.isfile(path):
+        return JSONResponse(status_code=404, content={"detail": "Not found"})
+    return FileResponse(path)
 
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(detection.router, prefix="/api/detection", tags=["detection"])

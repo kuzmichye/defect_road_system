@@ -37,4 +37,8 @@ export const defectApi = {
   exportGeoJson: () => api.get('/export/geojson').then((r) => r.data),
 
   getForecast: () => api.get('/analytics/forecast').then((r) => r.data),
+
+  getRiskSummary: () => api.get('/analytics/risk-summary').then((r) => r.data),
+
+  getRiskForecast: () => api.get('/analytics/risk-forecast').then((r) => r.data),
 }

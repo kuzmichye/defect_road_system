@@ -1,7 +1,7 @@
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Depends, Request, Response
+from fastapi import FastAPI, Depends, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 from prometheus_fastapi_instrumentator import Instrumentator
 from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
 import os
@@ -57,14 +57,7 @@ async def metrics_internal():
     return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
-# /uploads защищён авторизацией — отдаём файл только после проверки токена
-@app.get("/uploads/{filename:path}", include_in_schema=False)
-async def serve_upload(filename: str, request: Request, _user=Depends(get_current_user)):
-    from fastapi.responses import FileResponse
-    path = os.path.join("uploads", filename)
-    if not os.path.isfile(path):
-        return JSONResponse(status_code=404, content={"detail": "Not found"})
-    return FileResponse(path)
+app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(detection.router, prefix="/api/detection", tags=["detection"])

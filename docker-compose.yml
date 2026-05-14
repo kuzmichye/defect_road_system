@@ -69,7 +69,7 @@ services:
       - "--config.file=/etc/prometheus/prometheus.yml"
       - "--storage.tsdb.retention.time=30d"
       - "--web.external-url=https://roadinspect.ru/prometheus/"
-      - "--web.route-prefix=/"
+      - "--web.route-prefix=/prometheus/"
     depends_on:
       - backend
 

@@ -1,7 +1,9 @@
+import time
 from app.celery_app import celery_app
 from app.services.detection import _infer_video, _reverse_geocode, _extract_video_gps
 from app.models.defect import Defect
 from app.config import settings
+from app.metrics import defect_detections_total, detection_duration_seconds
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -20,7 +22,9 @@ def process_video_task(filepath: str, lat, lng, address):
             lat, lng = gps
     if lat and lng and not address:
         address = _reverse_geocode(lat, lng)
+    t0 = time.perf_counter()
     raw, annotated_video_url = _infer_video(filepath)
+    detection_duration_seconds.labels(source_type="video").observe(time.perf_counter() - t0)
     with _SyncSession() as db:
         for det in raw:
             db.add(Defect(
@@ -33,6 +37,11 @@ def process_video_task(filepath: str, lat, lng, address):
                 source_type="video",
                 crop_image=det.get("crop_bytes"),
             ))
+            defect_detections_total.labels(
+                defect_type=det["defect_type"],
+                severity=det["severity"],
+                source_type="video",
+            ).inc()
         db.commit()
     count = len(raw)
     return {

@@ -27,7 +27,13 @@ def _preload_ml():
         pass  # не блокировать старт если sklearn не установлен
 
 
-app = FastAPI(title="Road Defect Detection API", version="1.0.0", lifespan=lifespan)
+app = FastAPI(
+    title="Road Defect Detection API",
+    version="1.0.0",
+    lifespan=lifespan,
+    docs_url="/api/docs",
+    openapi_url="/api/openapi.json",
+)
 
 Instrumentator().instrument(app)
 

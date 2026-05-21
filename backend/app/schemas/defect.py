@@ -10,7 +10,6 @@ class DefectBase(BaseModel):
     lat: Optional[float] = None
     lng: Optional[float] = None
     address: Optional[str] = None
-    description: Optional[str] = None
     source_type: str = "image"
 
 
@@ -24,7 +23,6 @@ class DefectUpdate(BaseModel):
     lat: Optional[float] = None
     lng: Optional[float] = None
     address: Optional[str] = None
-    description: Optional[str] = None
 
 
 class DefectOut(DefectBase):

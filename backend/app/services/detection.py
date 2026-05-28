@@ -7,6 +7,7 @@ import subprocess
 import cv2
 import json
 import urllib.request
+from collections import defaultdict
 from pathlib import Path
 from fastapi import UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -55,6 +56,9 @@ RUSSIAN_NAMES = {
 
 _model = None
 BLUR_THRESHOLD = 30  # Laplacian variance below this → frame is too blurry for inference
+SAHI_TILE_SIZE = 960   # crop size in pixels before passing to YOLO
+SAHI_OVERLAP = 0.2     # tile overlap fraction
+SAHI_INTERVAL = 10     # run SAHI every N frames (performance vs recall trade-off)
 
 
 def _apply_clahe(img_bgr):
@@ -63,6 +67,88 @@ def _apply_clahe(img_bgr):
     clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
     l = clahe.apply(l)
     return cv2.cvtColor(cv2.merge([l, a, b]), cv2.COLOR_LAB2BGR)
+
+
+def _apply_sharpen(img_bgr):
+    blurred = cv2.GaussianBlur(img_bgr, (0, 0), 3)
+    return cv2.addWeighted(img_bgr, 1.5, blurred, -0.5, 0)
+
+
+def _preprocess(img_bgr):
+    return _apply_sharpen(_apply_clahe(img_bgr))
+
+
+def _iou(b1, b2):
+    ix1, iy1 = max(b1[0], b2[0]), max(b1[1], b2[1])
+    ix2, iy2 = min(b1[2], b2[2]), min(b1[3], b2[3])
+    inter = max(0, ix2 - ix1) * max(0, iy2 - iy1)
+    a1 = (b1[2] - b1[0]) * (b1[3] - b1[1])
+    a2 = (b2[2] - b2[0]) * (b2[3] - b2[1])
+    return inter / (a1 + a2 - inter + 1e-6)
+
+
+def _sahi_predict(model, frame, conf=0.15, iou=0.45):
+    """Tiled inference. Returns merged detections in full-frame coordinates."""
+    h, w = frame.shape[:2]
+    if w <= SAHI_TILE_SIZE and h <= SAHI_TILE_SIZE:
+        # Frame smaller than tile — plain predict
+        boxes_by_cls = defaultdict(list)
+        for r in model.predict(frame, imgsz=640, conf=conf, iou=iou, verbose=False):
+            for box in r.boxes:
+                cls = model.names[int(box.cls)]
+                if cls == "manhole covers":
+                    continue
+                x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
+                boxes_by_cls[cls].append((float(box.conf), x1, y1, x2, y2))
+        return _nms_by_cls(boxes_by_cls, iou)
+
+    step = int(SAHI_TILE_SIZE * (1 - SAHI_OVERLAP))
+    xs = list(range(0, w - SAHI_TILE_SIZE + 1, step))
+    if not xs or xs[-1] + SAHI_TILE_SIZE < w:
+        xs.append(max(0, w - SAHI_TILE_SIZE))
+    ys = list(range(0, h - SAHI_TILE_SIZE + 1, step))
+    if not ys or ys[-1] + SAHI_TILE_SIZE < h:
+        ys.append(max(0, h - SAHI_TILE_SIZE))
+
+    boxes_by_cls = defaultdict(list)
+    for ty in ys:
+        for tx in xs:
+            tile = frame[ty:ty + SAHI_TILE_SIZE, tx:tx + SAHI_TILE_SIZE]
+            for r in model.predict(tile, imgsz=640, conf=conf, iou=iou, verbose=False):
+                for box in r.boxes:
+                    cls = model.names[int(box.cls)]
+                    if cls == "manhole covers":
+                        continue
+                    bx1, by1, bx2, by2 = map(int, box.xyxy[0].tolist())
+                    boxes_by_cls[cls].append((float(box.conf), tx + bx1, ty + by1, tx + bx2, ty + by2))
+
+    return _nms_by_cls(boxes_by_cls, iou)
+
+
+def _nms_by_cls(boxes_by_cls, iou_thresh):
+    result = []
+    for cls, boxes in boxes_by_cls.items():
+        boxes = sorted(boxes, key=lambda b: b[0], reverse=True)
+        kept = []
+        while boxes:
+            best = boxes.pop(0)
+            kept.append(best)
+            boxes = [b for b in boxes if _iou(best[1:], b[1:]) < iou_thresh]
+        for conf, x1, y1, x2, y2 in kept:
+            result.append({"cls": cls, "conf": round(conf, 2), "box": [x1, y1, x2, y2]})
+    return result
+
+
+def _crop_box(img_bgr, box_xyxy) -> bytes | None:
+    x1, y1, x2, y2 = box_xyxy
+    h, w = img_bgr.shape[:2]
+    x1, y1 = max(0, x1), max(0, y1)
+    x2, y2 = min(w, x2), min(h, y2)
+    crop = img_bgr[y1:y2, x1:x2]
+    if crop.size == 0:
+        return None
+    _, buf = cv2.imencode(".jpg", crop, [cv2.IMWRITE_JPEG_QUALITY, 85])
+    return buf.tobytes()
 
 
 def _load_model():
@@ -96,7 +182,7 @@ def _crop_bytes(img_bgr, box) -> bytes | None:
 def _infer_image(filepath: str) -> tuple[list[dict], str | None]:
     model = _load_model()
     img_bgr = cv2.imread(filepath)
-    infer_src = _apply_clahe(img_bgr) if img_bgr is not None else filepath
+    infer_src = _preprocess(img_bgr) if img_bgr is not None else filepath
     results = model.predict(infer_src, imgsz=896, conf=0.15, iou=0.45, verbose=False)
     detections = []
     annotated_url = None
@@ -190,8 +276,7 @@ def _infer_video(filepath: str) -> tuple[list[dict], str | None]:
             frame_idx += 1
             continue
 
-        # CLAHE on full frame
-        infer_frame = _apply_clahe(frame)
+        infer_frame = _preprocess(frame)
 
         results = model.track(
             infer_frame, imgsz=640, conf=0.15, iou=0.45,
@@ -199,7 +284,6 @@ def _infer_video(filepath: str) -> tuple[list[dict], str | None]:
         )
         for r in results:
             r.names = {i: RUSSIAN_NAMES.get(n, n) for i, n in model.names.items()}
-            # filter manhole covers from video rendering too
             if r.boxes is not None and len(r.boxes):
                 keep = [i for i, b in enumerate(r.boxes) if model.names[int(b.cls)] != "manhole covers"]
                 r = r[keep]
@@ -217,6 +301,17 @@ def _infer_video(filepath: str) -> tuple[list[dict], str | None]:
                 else:
                     if best_by_class.get(cls, {}).get("conf", 0) < conf:
                         best_by_class[cls] = {"conf": conf, "crop_bytes": crop}
+
+        # SAHI pass — catches small/distant defects missed by full-frame track
+        if frame_idx % SAHI_INTERVAL == 0:
+            for det in _sahi_predict(model, infer_frame, conf=0.15, iou=0.45):
+                cls, conf = det["cls"], det["conf"]
+                if best_by_class.get(cls, {}).get("conf", 0) < conf:
+                    best_by_class[cls] = {
+                        "conf": conf,
+                        "crop_bytes": _crop_box(frame, det["box"]),
+                    }
+
         frame_idx += 1
 
     cap.release()

@@ -148,9 +148,8 @@ function jitterPositions(defects: Defect[]): Map<number, [number, number]> {
       result.set(d.id, [d.lat!, d.lng!])
     } else {
       group.forEach((d, i) => {
-        const angle = (2 * Math.PI * i) / group.length - Math.PI / 2
-        const r = 0.00018
-        result.set(d.id, [d.lat! + r * Math.cos(angle), d.lng! + r * Math.sin(angle)])
+        const offset = (i - (group.length - 1) / 2) * 0.00015
+        result.set(d.id, [d.lat!, d.lng! + offset])
       })
     }
   })

@@ -321,8 +321,10 @@ function UploadSection({
               Аннотированное видео
             </p>
             <video
+              key={state.annotatedVideoUrl}
               src={state.annotatedVideoUrl}
               controls
+              preload="metadata"
               className="w-full rounded-xl border border-slate-200 shadow-sm"
               style={{ maxHeight: 360 }}
             />

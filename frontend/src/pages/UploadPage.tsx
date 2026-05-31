@@ -63,14 +63,6 @@ const emptyState = (): SectionState => ({
   searchLoading: false,
 })
 
-function computeBearing(lat1: number, lng1: number, lat2: number, lng2: number): number {
-  const toRad = (d: number) => d * Math.PI / 180
-  const dLng = toRad(lng2 - lng1)
-  const lat1R = toRad(lat1), lat2R = toRad(lat2)
-  const y = Math.sin(dLng) * Math.cos(lat2R)
-  const x = Math.cos(lat1R) * Math.sin(lat2R) - Math.sin(lat1R) * Math.cos(lat2R) * Math.cos(dLng)
-  return Math.atan2(y, x) // radians: 0=north, π/2=east
-}
 
 const STORAGE_KEY: Record<Tab, string> = {
   photo: 'defect_result_photo',
@@ -634,13 +626,12 @@ export function UploadPage() {
     fd.append('lng', String(state.lng))
 
     if (type === 'video') {
-      // Store route bearing so the main map can jitter defects along the road direction
+      // Store route so the main map can spread defects linearly along the road segment
       if (state.lat != null && state.lng != null && state.lat2 != null && state.lng2 != null) {
-        const bearing = computeBearing(state.lat, state.lng, state.lat2, state.lng2)
         const locKey = `${state.lat.toFixed(4)},${state.lng.toFixed(4)}`
         try {
           const stored = JSON.parse(localStorage.getItem('defect_route_bearings') || '{}')
-          stored[locKey] = bearing
+          stored[locKey] = { lat1: state.lat, lng1: state.lng, lat2: state.lat2, lng2: state.lng2 }
           localStorage.setItem('defect_route_bearings', JSON.stringify(stored))
         } catch {}
       }

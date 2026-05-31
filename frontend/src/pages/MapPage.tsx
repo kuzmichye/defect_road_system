@@ -15,7 +15,9 @@ const TYPES = [
   { key: 'repaired cracks',           label: 'Заделанные трещины'        },
 ]
 
-function loadLocationBearings(): Record<string, number> {
+type RouteData = { lat1: number; lng1: number; lat2: number; lng2: number }
+
+function loadLocationRoutes(): Record<string, RouteData> {
   try { return JSON.parse(localStorage.getItem('defect_route_bearings') || '{}') }
   catch { return {} }
 }
@@ -23,7 +25,7 @@ function loadLocationBearings(): Record<string, number> {
 export function MapPage() {
   const { defects, fetchDefects } = useDefectStore()
   const [filterType, setFilterType] = useState('')
-  const [locationBearings] = useState<Record<string, number>>(loadLocationBearings)
+  const [locationRoutes] = useState<Record<string, RouteData>>(loadLocationRoutes)
   const location = useLocation()
   const focusLocation = (location.state as any)?.focusLocation ?? null
 
@@ -80,7 +82,7 @@ export function MapPage() {
 
       {/* Map */}
       <div className="flex-1" style={{ isolation: 'isolate' }}>
-        <DefectMap defects={filtered} height="100%" focusLocation={focusLocation} locationBearings={locationBearings} />
+        <DefectMap defects={filtered} height="100%" focusLocation={focusLocation} locationRoutes={locationRoutes} />
       </div>
     </div>
   )

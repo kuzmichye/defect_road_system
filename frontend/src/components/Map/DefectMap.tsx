@@ -142,7 +142,9 @@ function DefectPopup({ defect }: { defect: Defect }) {
   )
 }
 
-function jitterPositions(defects: Defect[], locationBearings?: Record<string, number>): Map<number, [number, number]> {
+interface RouteData { lat1: number; lng1: number; lat2: number; lng2: number }
+
+function jitterPositions(defects: Defect[], locationRoutes?: Record<string, RouteData>): Map<number, [number, number]> {
   const result = new Map<number, [number, number]>()
   const groups = new Map<string, Defect[]>()
 
@@ -155,15 +157,26 @@ function jitterPositions(defects: Defect[], locationBearings?: Record<string, nu
 
   groups.forEach((group, key) => {
     if (group.length === 1) {
-      const d = group[0]
-      result.set(d.id, [d.lat!, d.lng!])
+      result.set(group[0].id, [group[0].lat!, group[0].lng!])
     } else {
-      // bearing in radians: 0=north(vertical), π/2=east(horizontal). Default horizontal.
-      const bearing = locationBearings?.[key] ?? Math.PI / 2
-      group.forEach((d, i) => {
-        const offset = (i - (group.length - 1) / 2) * 0.00015
-        result.set(d.id, [d.lat! + offset * Math.cos(bearing), d.lng! + offset * Math.sin(bearing)])
-      })
+      const route = locationRoutes?.[key]
+      if (route) {
+        // Spread defects linearly between start and end of the marked route
+        const n = group.length
+        group.forEach((d, i) => {
+          const t = n === 1 ? 0.5 : i / (n - 1)
+          result.set(d.id, [
+            route.lat1 + t * (route.lat2 - route.lat1),
+            route.lng1 + t * (route.lng2 - route.lng1),
+          ])
+        })
+      } else {
+        // Fallback: horizontal spread when no route info available
+        group.forEach((d, i) => {
+          const offset = (i - (group.length - 1) / 2) * 0.00015
+          result.set(d.id, [d.lat!, d.lng! + offset])
+        })
+      }
     }
   })
 
@@ -188,13 +201,13 @@ interface DefectMapProps {
   focusLocation?: { lat: number; lng: number } | null
   height?: string
   routePreview?: RoutePreview | null
-  locationBearings?: Record<string, number>
+  locationRoutes?: Record<string, RouteData>
 }
 
-export function DefectMap({ defects = [], onMapClick, selectedCoords, focusLocation, height = '100%', routePreview, locationBearings }: DefectMapProps) {
+export function DefectMap({ defects = [], onMapClick, selectedCoords, focusLocation, height = '100%', routePreview, locationRoutes }: DefectMapProps) {
   const positions = useMemo(
-    () => jitterPositions(defects.filter((d) => d.lat != null && d.lng != null), locationBearings),
-    [defects, locationBearings],
+    () => jitterPositions(defects.filter((d) => d.lat != null && d.lng != null), locationRoutes),
+    [defects, locationRoutes],
   )
 
   return (

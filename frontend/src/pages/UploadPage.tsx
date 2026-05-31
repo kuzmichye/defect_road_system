@@ -32,6 +32,8 @@ interface SectionState {
   savedAt: number | null
   lat: number | null
   lng: number | null
+  lat2: number | null
+  lng2: number | null
   geoChecked: boolean
   hasGeoTag: boolean
   searchQuery: string
@@ -52,12 +54,23 @@ const emptyState = (): SectionState => ({
   savedAt: null,
   lat: null,
   lng: null,
+  lat2: null,
+  lng2: null,
   geoChecked: false,
   hasGeoTag: false,
   searchQuery: '',
   searchLocation: null,
   searchLoading: false,
 })
+
+function computeBearing(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const toRad = (d: number) => d * Math.PI / 180
+  const dLng = toRad(lng2 - lng1)
+  const lat1R = toRad(lat1), lat2R = toRad(lat2)
+  const y = Math.sin(dLng) * Math.cos(lat2R)
+  const x = Math.cos(lat1R) * Math.sin(lat2R) - Math.sin(lat1R) * Math.cos(lat2R) * Math.cos(dLng)
+  return Math.atan2(y, x) // radians: 0=north, π/2=east
+}
 
 const STORAGE_KEY: Record<Tab, string> = {
   photo: 'defect_result_photo',
@@ -242,8 +255,8 @@ function UploadSection({
         onChange({ geoChecked: true, hasGeoTag: false })
       }
     } else {
-      // Video: can't reliably read GPS from browser, require manual selection
-      onChange({ geoChecked: true, hasGeoTag: false })
+      // Video: GPS extracted server-side; just clear state, no map forced
+      onChange({ geoChecked: false, hasGeoTag: false, lat: null, lng: null, lat2: null, lng2: null })
     }
   }
 
@@ -410,102 +423,105 @@ function UploadSection({
       {/* Location section */}
       {state.file && (
         <>
-          {/* Checking EXIF */}
-          {!state.geoChecked && type === 'photo' && (
-            <div className="flex items-center gap-2 text-slate-400 text-sm">
-              <Loader2 size={14} className="animate-spin" />
-              Проверка геометки файла...
-            </div>
-          )}
-
-          {/* GPS found automatically */}
-          {state.geoChecked && state.hasGeoTag && (
-            <div className="flex items-center justify-between bg-green-50 border border-green-200 rounded-xl px-4 py-3">
-              <div className="flex items-center gap-2.5">
-                <div className="w-7 h-7 bg-green-100 rounded-full flex items-center justify-center flex-shrink-0">
-                  <MapPin size={14} className="text-green-600" />
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-green-800">Геопозиция из файла</p>
-                  <p className="text-xs text-green-600 font-mono mt-0.5">
-                    {state.lat?.toFixed(6)}, {state.lng?.toFixed(6)}
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => onChange({ lat: null, lng: null, hasGeoTag: false })}
-                className="text-slate-400 hover:text-red-500 transition-colors p-1"
-              >
-                <X size={14} />
-              </button>
-            </div>
-          )}
-
-          {/* No GPS — map picker (mandatory for photo, optional for video) */}
-          {state.geoChecked && !state.hasGeoTag && (
-            <div className="space-y-3">
-              {type === 'photo' ? (
-                <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
-                  <AlertCircle size={15} className="text-amber-500 flex-shrink-0" />
-                  <p className="text-sm text-amber-800">Геометка не найдена — укажите место на карте</p>
-                </div>
-              ) : (
-                <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3">
-                  <MapPin size={15} className="text-slate-400 flex-shrink-0" />
-                  <p className="text-sm text-slate-600">GPS будет извлечён из видео автоматически — или укажите на карте</p>
+          {/* PHOTO: EXIF checking + map picker */}
+          {type === 'photo' && (
+            <>
+              {!state.geoChecked && (
+                <div className="flex items-center gap-2 text-slate-400 text-sm">
+                  <Loader2 size={14} className="animate-spin" />
+                  Проверка геометки файла...
                 </div>
               )}
+              {state.geoChecked && state.hasGeoTag && (
+                <div className="flex items-center justify-between bg-green-50 border border-green-200 rounded-xl px-4 py-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-7 h-7 bg-green-100 rounded-full flex items-center justify-center flex-shrink-0">
+                      <MapPin size={14} className="text-green-600" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-green-800">Геопозиция из файла</p>
+                      <p className="text-xs text-green-600 font-mono mt-0.5">
+                        {state.lat?.toFixed(6)}, {state.lng?.toFixed(6)}
+                      </p>
+                    </div>
+                  </div>
+                  <button type="button" onClick={() => onChange({ lat: null, lng: null, hasGeoTag: false })} className="text-slate-400 hover:text-red-500 transition-colors p-1">
+                    <X size={14} />
+                  </button>
+                </div>
+              )}
+              {state.geoChecked && !state.hasGeoTag && (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+                    <AlertCircle size={15} className="text-amber-500 flex-shrink-0" />
+                    <p className="text-sm text-amber-800">Геометка не найдена — укажите место на карте</p>
+                  </div>
+                  <div className="flex gap-2">
+                    <input type="text" value={state.searchQuery} onChange={(e) => onChange({ searchQuery: e.target.value })} onKeyDown={handleSearchKey} placeholder="Поиск адреса..." className="flex-1 border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    <button type="button" onClick={handleSearch} disabled={state.searchLoading} className="px-3 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white rounded-lg transition-colors flex items-center">
+                      {state.searchLoading ? <Loader2 size={15} className="animate-spin" /> : <Search size={15} />}
+                    </button>
+                  </div>
+                  <div className="rounded-xl overflow-hidden border border-slate-200" style={{ height: 280 }}>
+                    <DefectMap height="280px" onMapClick={(lat, lng) => onChange({ lat, lng })} selectedCoords={state.lat != null ? { lat: state.lat, lng: state.lng! } : null} focusLocation={state.searchLocation} />
+                  </div>
+                  {state.lat != null ? (
+                    <div className="flex items-center justify-between bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">
+                      <div className="flex items-center gap-1.5">
+                        <CheckCircle size={13} className="text-blue-600" />
+                        <span className="text-xs text-blue-700 font-mono">{state.lat.toFixed(5)}, {state.lng!.toFixed(5)}</span>
+                      </div>
+                      <button type="button" onClick={() => onChange({ lat: null, lng: null })} className="text-slate-400 hover:text-red-500 transition-colors"><X size={13} /></button>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-slate-400 text-center">Нажмите на карту, чтобы отметить место</p>
+                  )}
+                </div>
+              )}
+            </>
+          )}
 
-              {/* Address search */}
+          {/* VIDEO: 2-click route selection */}
+          {type === 'video' && (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3">
+                <MapPin size={15} className="text-slate-400 flex-shrink-0" />
+                <p className="text-sm text-slate-600">Отметьте маршрут на карте — начало и конец поездки</p>
+              </div>
               <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={state.searchQuery}
-                  onChange={(e) => onChange({ searchQuery: e.target.value })}
-                  onKeyDown={handleSearchKey}
-                  placeholder="Поиск адреса..."
-                  className="flex-1 border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-                <button
-                  type="button"
-                  onClick={handleSearch}
-                  disabled={state.searchLoading}
-                  className="px-3 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white rounded-lg transition-colors flex items-center"
-                >
-                  {state.searchLoading
-                    ? <Loader2 size={15} className="animate-spin" />
-                    : <Search size={15} />
-                  }
+                <input type="text" value={state.searchQuery} onChange={(e) => onChange({ searchQuery: e.target.value })} onKeyDown={handleSearchKey} placeholder="Поиск адреса..." className="flex-1 border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                <button type="button" onClick={handleSearch} disabled={state.searchLoading} className="px-3 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white rounded-lg transition-colors flex items-center">
+                  {state.searchLoading ? <Loader2 size={15} className="animate-spin" /> : <Search size={15} />}
                 </button>
               </div>
-
-              {/* Map */}
               <div className="rounded-xl overflow-hidden border border-slate-200" style={{ height: 280 }}>
                 <DefectMap
                   height="280px"
-                  onMapClick={(lat, lng) => onChange({ lat, lng })}
-                  selectedCoords={state.lat != null ? { lat: state.lat, lng: state.lng! } : null}
+                  onMapClick={(lat, lng) => {
+                    if (state.lat == null) {
+                      onChange({ lat, lng, lat2: null, lng2: null })
+                    } else if (state.lat2 == null) {
+                      onChange({ lat2: lat, lng2: lng })
+                    } else {
+                      onChange({ lat, lng, lat2: null, lng2: null })
+                    }
+                  }}
+                  routePreview={state.lat != null ? { lat1: state.lat, lng1: state.lng!, lat2: state.lat2, lng2: state.lng2 } : null}
                   focusLocation={state.searchLocation}
                 />
               </div>
-
-              {state.lat != null ? (
+              {state.lat == null ? (
+                <p className="text-xs text-slate-400 text-center">Шаг 1: нажмите начало маршрута</p>
+              ) : state.lat2 == null ? (
+                <p className="text-xs text-blue-500 text-center">Шаг 2: нажмите конец маршрута</p>
+              ) : (
                 <div className="flex items-center justify-between bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">
                   <div className="flex items-center gap-1.5">
                     <CheckCircle size={13} className="text-blue-600" />
-                    <span className="text-xs text-blue-700 font-mono">{state.lat.toFixed(5)}, {state.lng!.toFixed(5)}</span>
+                    <span className="text-xs text-blue-700">Маршрут отмечен</span>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => onChange({ lat: null, lng: null })}
-                    className="text-slate-400 hover:text-red-500 transition-colors"
-                  >
-                    <X size={13} />
-                  </button>
+                  <button type="button" onClick={() => onChange({ lat: null, lng: null, lat2: null, lng2: null })} className="text-slate-400 hover:text-red-500 transition-colors"><X size={13} /></button>
                 </div>
-              ) : (
-                <p className="text-xs text-slate-400 text-center">Нажмите на карту, чтобы отметить место</p>
               )}
             </div>
           )}
@@ -618,6 +634,16 @@ export function UploadPage() {
     fd.append('lng', String(state.lng))
 
     if (type === 'video') {
+      // Store route bearing so the main map can jitter defects along the road direction
+      if (state.lat != null && state.lng != null && state.lat2 != null && state.lng2 != null) {
+        const bearing = computeBearing(state.lat, state.lng, state.lat2, state.lng2)
+        const locKey = `${state.lat.toFixed(4)},${state.lng.toFixed(4)}`
+        try {
+          const stored = JSON.parse(localStorage.getItem('defect_route_bearings') || '{}')
+          stored[locKey] = bearing
+          localStorage.setItem('defect_route_bearings', JSON.stringify(stored))
+        } catch {}
+      }
       try {
         const { task_id } = await defectApi.detectVideo(fd)
         localStorage.setItem(VIDEO_TASK_KEY, JSON.stringify({ task_id, loadingStartTime: startTime }))

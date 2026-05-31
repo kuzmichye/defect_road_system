@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { MapContainer, TileLayer, Marker, Popup, useMapEvents, useMap } from 'react-leaflet'
+import { MapContainer, TileLayer, Marker, Popup, Polyline, useMapEvents, useMap } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
 import L from 'leaflet'
 import type { Defect } from '../../types'
@@ -60,6 +60,17 @@ const selectedIcon = L.divIcon({
   iconAnchor: [13, 32],
   popupAnchor: [0, -34],
 })
+
+function makeRoutePin(color: string) {
+  return L.divIcon({
+    className: '',
+    html: `<div style="width:14px;height:14px;background:${color};border:2.5px solid white;border-radius:50%;box-shadow:0 2px 4px rgba(0,0,0,0.35)"></div>`,
+    iconSize: [14, 14],
+    iconAnchor: [7, 7],
+  })
+}
+const routeStartIcon = makeRoutePin('#22c55e')
+const routeEndIcon   = makeRoutePin('#ef4444')
 
 function MapClickHandler({ onMapClick }: { onMapClick: (lat: number, lng: number) => void }) {
   useMapEvents({ click: (e) => onMapClick(e.latlng.lat, e.latlng.lng) })
@@ -131,7 +142,7 @@ function DefectPopup({ defect }: { defect: Defect }) {
   )
 }
 
-function jitterPositions(defects: Defect[]): Map<number, [number, number]> {
+function jitterPositions(defects: Defect[], locationBearings?: Record<string, number>): Map<number, [number, number]> {
   const result = new Map<number, [number, number]>()
   const groups = new Map<string, Defect[]>()
 
@@ -142,14 +153,16 @@ function jitterPositions(defects: Defect[]): Map<number, [number, number]> {
     groups.get(key)!.push(d)
   })
 
-  groups.forEach((group) => {
+  groups.forEach((group, key) => {
     if (group.length === 1) {
       const d = group[0]
       result.set(d.id, [d.lat!, d.lng!])
     } else {
+      // bearing in radians: 0=north(vertical), π/2=east(horizontal). Default horizontal.
+      const bearing = locationBearings?.[key] ?? Math.PI / 2
       group.forEach((d, i) => {
         const offset = (i - (group.length - 1) / 2) * 0.00015
-        result.set(d.id, [d.lat!, d.lng! + offset])
+        result.set(d.id, [d.lat! + offset * Math.cos(bearing), d.lng! + offset * Math.sin(bearing)])
       })
     }
   })
@@ -163,18 +176,25 @@ function MapFlyTo({ location }: { location: { lat: number; lng: number } }) {
   return null
 }
 
+interface RoutePreview {
+  lat1: number; lng1: number
+  lat2: number | null; lng2: number | null
+}
+
 interface DefectMapProps {
   defects?: Defect[]
   onMapClick?: (lat: number, lng: number) => void
   selectedCoords?: { lat: number; lng: number } | null
   focusLocation?: { lat: number; lng: number } | null
   height?: string
+  routePreview?: RoutePreview | null
+  locationBearings?: Record<string, number>
 }
 
-export function DefectMap({ defects = [], onMapClick, selectedCoords, focusLocation, height = '100%' }: DefectMapProps) {
+export function DefectMap({ defects = [], onMapClick, selectedCoords, focusLocation, height = '100%', routePreview, locationBearings }: DefectMapProps) {
   const positions = useMemo(
-    () => jitterPositions(defects.filter((d) => d.lat != null && d.lng != null)),
-    [defects],
+    () => jitterPositions(defects.filter((d) => d.lat != null && d.lng != null), locationBearings),
+    [defects, locationBearings],
   )
 
   return (
@@ -187,6 +207,20 @@ export function DefectMap({ defects = [], onMapClick, selectedCoords, focusLocat
       {focusLocation && <MapFlyTo location={focusLocation} />}
       {selectedCoords && (
         <Marker position={[selectedCoords.lat, selectedCoords.lng]} icon={selectedIcon} />
+      )}
+      {routePreview && (
+        <>
+          <Marker position={[routePreview.lat1, routePreview.lng1]} icon={routeStartIcon} />
+          {routePreview.lat2 != null && routePreview.lng2 != null && (
+            <>
+              <Polyline
+                positions={[[routePreview.lat1, routePreview.lng1], [routePreview.lat2, routePreview.lng2]]}
+                color="#3b82f6" weight={3} dashArray="7,5"
+              />
+              <Marker position={[routePreview.lat2, routePreview.lng2]} icon={routeEndIcon} />
+            </>
+          )}
+        </>
       )}
       {defects
         .filter((d) => d.lat != null && d.lng != null && positions.has(d.id))

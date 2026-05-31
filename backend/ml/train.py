@@ -135,3 +135,75 @@ def train(models_dir: str) -> tuple:
     joblib.dump(reg_days,  os.path.join(models_dir, 'days_pred.pkl'))
 
     return clf, reg_score, reg_days
+
+
+def evaluate(verbose: bool = True) -> dict:
+    from sklearn.model_selection import cross_validate, StratifiedKFold, KFold
+    from sklearn.metrics import make_scorer, mean_absolute_error, mean_squared_error
+
+    X, y_level, y_score, y_days = _generate_data()
+
+    clf = RandomForestClassifier(n_estimators=200, max_depth=12, random_state=42, n_jobs=-1)
+    cv_clf = cross_validate(
+        clf, X, y_level,
+        cv=StratifiedKFold(n_splits=5, shuffle=True, random_state=42),
+        scoring=['accuracy', 'f1_macro'],
+        return_train_score=False,
+    )
+
+    reg_s = GradientBoostingRegressor(n_estimators=150, max_depth=5, random_state=42)
+    cv_score = cross_validate(
+        reg_s, X, y_score,
+        cv=KFold(n_splits=5, shuffle=True, random_state=42),
+        scoring={
+            'mae':  make_scorer(mean_absolute_error, greater_is_better=False),
+            'rmse': make_scorer(lambda y, p: mean_squared_error(y, p) ** 0.5, greater_is_better=False),
+            'r2':   'r2',
+        },
+        return_train_score=False,
+    )
+
+    reg_d = GradientBoostingRegressor(n_estimators=150, max_depth=5, random_state=42)
+    cv_days = cross_validate(
+        reg_d, X, y_days,
+        cv=KFold(n_splits=5, shuffle=True, random_state=42),
+        scoring={
+            'mae':  make_scorer(mean_absolute_error, greater_is_better=False),
+            'rmse': make_scorer(lambda y, p: mean_squared_error(y, p) ** 0.5, greater_is_better=False),
+            'r2':   'r2',
+        },
+        return_train_score=False,
+    )
+
+    results = {
+        'classifier': {
+            'accuracy': float(np.mean(cv_clf['test_accuracy'])),
+            'f1_macro': float(np.mean(cv_clf['test_f1_macro'])),
+        },
+        'risk_score_regressor': {
+            'mae':  float(-np.mean(cv_score['test_mae'])),
+            'rmse': float(-np.mean(cv_score['test_rmse'])),
+            'r2':   float(np.mean(cv_score['test_r2'])),
+        },
+        'days_regressor': {
+            'mae':  float(-np.mean(cv_days['test_mae'])),
+            'rmse': float(-np.mean(cv_days['test_rmse'])),
+            'r2':   float(np.mean(cv_days['test_r2'])),
+        },
+    }
+
+    if verbose:
+        print("\n=== Метрики (5-fold CV, n=8000) ===")
+        print(f"\nRandomForestClassifier (уровень риска):")
+        print(f"  Accuracy : {results['classifier']['accuracy']:.3f}")
+        print(f"  F1 macro : {results['classifier']['f1_macro']:.3f}")
+        print(f"\nGradientBoosting (risk score 0–100):")
+        print(f"  MAE  : {results['risk_score_regressor']['mae']:.2f}")
+        print(f"  RMSE : {results['risk_score_regressor']['rmse']:.2f}")
+        print(f"  R2   : {results['risk_score_regressor']['r2']:.3f}")
+        print(f"\nGradientBoosting (dней до критичного):")
+        print(f"  MAE  : {results['days_regressor']['mae']:.2f}")
+        print(f"  RMSE : {results['days_regressor']['rmse']:.2f}")
+        print(f"  R2   : {results['days_regressor']['r2']:.3f}")
+
+    return results

@@ -58,7 +58,7 @@ _model = None
 BLUR_THRESHOLD = 30  # Laplacian variance below this → frame is too blurry for inference
 SAHI_TILE_SIZE = 960   # crop size in pixels before passing to YOLO
 SAHI_OVERLAP = 0.2     # tile overlap fraction
-SAHI_INTERVAL = 10     # run SAHI every N frames (performance vs recall trade-off)
+SAHI_INTERVAL = 30     # run SAHI every N frames (performance vs recall trade-off)
 
 
 def _apply_clahe(img_bgr):
@@ -74,7 +74,17 @@ def _apply_sharpen(img_bgr):
     return cv2.addWeighted(img_bgr, 1.5, blurred, -0.5, 0)
 
 
-def _preprocess(img_bgr):
+def _resize_to_1080p(img_bgr):
+    h, w = img_bgr.shape[:2]
+    if h > 1080:
+        scale = 1080 / h
+        img_bgr = cv2.resize(img_bgr, (int(w * scale), 1080), interpolation=cv2.INTER_AREA)
+    return img_bgr
+
+
+def _preprocess(img_bgr, resize=False):
+    if resize:
+        img_bgr = _resize_to_1080p(img_bgr)
     return _apply_sharpen(_apply_clahe(img_bgr))
 
 
@@ -276,7 +286,7 @@ def _infer_video(filepath: str) -> tuple[list[dict], str | None]:
             frame_idx += 1
             continue
 
-        infer_frame = _preprocess(frame)
+        infer_frame = _preprocess(frame, resize=True)
 
         results = model.track(
             infer_frame, imgsz=640, conf=0.15, iou=0.45,

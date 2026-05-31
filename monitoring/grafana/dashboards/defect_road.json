@@ -107,6 +107,115 @@
         }
       ],
       "fieldConfig": { "defaults": { "color": { "fixedColor": "red", "mode": "fixed" } } }
+    },
+    {
+      "id": 8,
+      "title": "Видео",
+      "type": "row",
+      "gridPos": { "x": 0, "y": 24, "w": 24, "h": 1 },
+      "collapsed": false
+    },
+    {
+      "id": 9,
+      "title": "Всего детекций из видео",
+      "type": "stat",
+      "gridPos": { "x": 0, "y": 25, "w": 6, "h": 4 },
+      "targets": [
+        {
+          "expr": "sum(defect_detections_total{source_type=\"video\"})",
+          "legendFormat": "Детекций"
+        }
+      ],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "steps": [{ "color": "purple", "value": null }] } } }
+    },
+    {
+      "id": 10,
+      "title": "HTTP запросы видео в секунду",
+      "type": "timeseries",
+      "gridPos": { "x": 6, "y": 25, "w": 18, "h": 8 },
+      "targets": [
+        {
+          "expr": "rate(http_requests_total{handler=~\"/api/detection/video.*\"}[1m])",
+          "legendFormat": "{{handler}} {{status}}"
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "title": "Детекций по типу дефекта (видео)",
+      "type": "piechart",
+      "gridPos": { "x": 0, "y": 29, "w": 6, "h": 8 },
+      "targets": [
+        {
+          "expr": "sum by (defect_type) (defect_detections_total{source_type=\"video\"})",
+          "legendFormat": "{{defect_type}}"
+        }
+      ],
+      "options": { "pieType": "donut", "legendDisplayMode": "table" }
+    },
+    {
+      "id": 12,
+      "title": "Детекций по критичности (видео)",
+      "type": "bargauge",
+      "gridPos": { "x": 0, "y": 37, "w": 12, "h": 6 },
+      "targets": [
+        {
+          "expr": "sum by (severity) (defect_detections_total{source_type=\"video\"})",
+          "legendFormat": "{{severity}}"
+        }
+      ],
+      "options": { "orientation": "horizontal", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 5 },
+              { "color": "orange", "value": 15 },
+              { "color": "red", "value": 30 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 13,
+      "title": "Время инференса видео p95 (сек)",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 37, "w": 12, "h": 6 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, rate(detection_duration_seconds_bucket{source_type=\"video\"}[5m]))",
+          "legendFormat": "p95 video"
+        }
+      ]
+    },
+    {
+      "id": 14,
+      "title": "Латентность HTTP видео p95 (мс)",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 43, "w": 12, "h": 6 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{handler=~\"/api/detection/video.*\"}[5m])) * 1000",
+          "legendFormat": "{{handler}}"
+        }
+      ]
+    },
+    {
+      "id": 15,
+      "title": "Ошибки HTTP видео (4xx/5xx)",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 43, "w": 12, "h": 6 },
+      "targets": [
+        {
+          "expr": "rate(http_requests_total{status=~\"4..|5..\", handler=~\"/api/detection/video.*\"}[1m])",
+          "legendFormat": "{{status}} {{handler}}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "color": { "fixedColor": "red", "mode": "fixed" } } }
     }
   ]
 }

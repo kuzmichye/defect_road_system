@@ -3,7 +3,7 @@ from fastapi import FastAPI, Depends, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from prometheus_fastapi_instrumentator import Instrumentator
-from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
+from prometheus_client import generate_latest, CONTENT_TYPE_LATEST, CollectorRegistry, multiprocess as prom_multiprocess
 import os
 from app.routers import detection, inventory, export, auth, analytics
 from app.services.auth import get_current_user
@@ -51,16 +51,24 @@ app.add_middleware(
 )
 
 
+def _collect_metrics() -> bytes:
+    if 'PROMETHEUS_MULTIPROC_DIR' in os.environ:
+        registry = CollectorRegistry()
+        prom_multiprocess.MultiProcessCollector(registry)
+        return generate_latest(registry)
+    return generate_latest()
+
+
 # /metrics — только для авторизованных пользователей (публичный доступ)
 @app.get("/metrics", include_in_schema=False)
 async def metrics(_user=Depends(get_current_user)):
-    return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
+    return Response(_collect_metrics(), media_type=CONTENT_TYPE_LATEST)
 
 
 # /internal/metrics — для Prometheus внутри Docker-сети (без токена, не экспонируется наружу)
 @app.get("/internal/metrics", include_in_schema=False)
 async def metrics_internal():
-    return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
+    return Response(_collect_metrics(), media_type=CONTENT_TYPE_LATEST)
 
 
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")

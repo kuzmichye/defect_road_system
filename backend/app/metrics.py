@@ -1,4 +1,10 @@
+import os
 from prometheus_client import Counter, Histogram
+
+# Multiprocess mode: required when Celery workers run in separate processes.
+# Each process writes to PROMETHEUS_MULTIPROC_DIR; FastAPI collects all on scrape.
+if 'PROMETHEUS_MULTIPROC_DIR' in os.environ:
+    os.makedirs(os.environ['PROMETHEUS_MULTIPROC_DIR'], exist_ok=True)
 
 defect_detections_total = Counter(
     "defect_detections_total",

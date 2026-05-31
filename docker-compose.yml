@@ -22,12 +22,15 @@ services:
       - "8000:8000"
     env_file:
       - ./backend/.env
+    environment:
+      - PROMETHEUS_MULTIPROC_DIR=/tmp/prometheus_multiproc
     depends_on:
       db:
         condition: service_healthy
     volumes:
       - ./backend:/app
       - uploads:/app/uploads
+      - prom_multiproc:/tmp/prometheus_multiproc
 
   redis:
     image: redis:7-alpine
@@ -40,6 +43,8 @@ services:
     command: celery -A app.celery_app worker --loglevel=info -P solo
     env_file:
       - ./backend/.env
+    environment:
+      - PROMETHEUS_MULTIPROC_DIR=/tmp/prometheus_multiproc
     depends_on:
       db:
         condition: service_healthy
@@ -48,6 +53,7 @@ services:
     volumes:
       - ./backend:/app
       - uploads:/app/uploads
+      - prom_multiproc:/tmp/prometheus_multiproc
 
   frontend:
     build: ./frontend
@@ -94,3 +100,4 @@ volumes:
   uploads:
   prometheus_data:
   grafana_data:
+  prom_multiproc:
